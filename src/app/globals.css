@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Sidebar collapse dynamic adjustments */
+body:not(.sidebar-collapsed) .main-content {
+  margin-left: 16rem; /* ml-64 */
+}
+body.sidebar-collapsed .main-content {
+  margin-left: 5rem; /* ml-20 */
+}
+body:not(.sidebar-collapsed) .topbar-content {
+  left: 16rem; /* left-64 */
+}
+body.sidebar-collapsed .topbar-content {
+  left: 5rem; /* left-20 */
+}
+
+/* Smooth transition animations for margins, spacing, and width */
+.main-content, .topbar-content, aside {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
