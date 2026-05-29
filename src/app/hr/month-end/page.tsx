@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import CustomSelect from '@/components/CustomSelect';
 import { getCycleBoundsForDate } from '@/lib/cycleUtils';
@@ -23,7 +23,7 @@ export default function MonthEndTiersPage() {
   const [selectedManager, setSelectedManager] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
 
-  const fetchTiersListings = async (yr = selectedTierYear, mo = selectedTierMonth) => {
+  const fetchTiersListings = useCallback(async (yr = selectedTierYear, mo = selectedTierMonth) => {
     try {
       setLoadingTiers(true);
       const res = await fetch(`/api/automation/tiers?year=${yr}&month=${mo}`);
@@ -58,12 +58,12 @@ export default function MonthEndTiersPage() {
         return nameA.localeCompare(nameB);
       });
       setTierListings(sorted);
-    } catch (err: any) {
-      alert(err.message || 'Error loading roster tiers');
+    } catch {
+      // Silent fail
     } finally {
       setLoadingTiers(false);
     }
-  };
+  }, [selectedTierYear, selectedTierMonth]);
 
   const fetchManagers = async () => {
     try {
@@ -83,7 +83,7 @@ export default function MonthEndTiersPage() {
 
   useEffect(() => {
     fetchTiersListings(selectedTierYear, selectedTierMonth);
-  }, [selectedTierYear, selectedTierMonth]);
+  }, [selectedTierYear, selectedTierMonth, fetchTiersListings]);
 
   useEffect(() => {
     fetchManagers();

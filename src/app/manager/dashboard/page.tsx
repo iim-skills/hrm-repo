@@ -511,7 +511,7 @@ export default function ManagerDashboard() {
                             </div>
                             {record?.notes && (
                               <p className="text-[10px] text-indigo-700/80 bg-indigo-50/50 p-2 rounded-lg border border-indigo-100/50 mt-2.5 italic leading-relaxed">
-                                " {record.notes} "
+                                &quot; {record.notes} &quot;
                               </p>
                             )}
                           </div>
@@ -604,7 +604,7 @@ export default function ManagerDashboard() {
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-4 mb-1 pb-1">
-              <h3 className="text-base font-bold text-slate-800">Today's Attendance Status</h3>
+              <h3 className="text-base font-bold text-slate-800">Today&apos;s Attendance Status</h3>
               <button
                 onClick={refreshAttendance}
                 disabled={refreshingAttendance}

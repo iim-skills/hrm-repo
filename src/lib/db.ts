@@ -8,7 +8,6 @@ interface MongooseCache {
 }
 
 declare global {
-  // eslint-disable-next-line
   var mongooseCache: MongooseCache | undefined;
 }
 
