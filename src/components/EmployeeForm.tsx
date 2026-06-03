@@ -24,6 +24,7 @@ const departments = [
   'CW',
   'ACCOUNTS',
   'PRODUCT DELIVERY',
+  'UIUX',
 ];
 
 export default function EmployeeForm({ employee, managers, onSubmit, onClose, currentUserRole }: EmployeeFormProps) {
