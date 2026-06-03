@@ -8,8 +8,10 @@ import EmployeeForm from '@/components/EmployeeForm';
 import LoadingState from '@/components/LoadingState';
 import ErrorState from '@/components/ErrorState';
 import type { IEmployee, PaginationInfo, EmployeeFormData } from '@/types';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminEmployeesPage() {
+  const { user } = useAuth();
   const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: 10, total: 0, totalPages: 0 });
   const [departments, setDepartments] = useState<string[]>([]);
@@ -174,6 +176,7 @@ export default function AdminEmployeesPage() {
 
       {showForm && (
         <EmployeeForm
+          currentUserRole={user?.role}
           employee={editingEmployee}
           managers={managers}
           onSubmit={editingEmployee ? handleUpdate : handleCreate}

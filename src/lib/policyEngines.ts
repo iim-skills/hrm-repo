@@ -84,11 +84,12 @@ export async function checkWFHRestriction(
   date: Date
 ): Promise<{ isRestricted: boolean; restrictedUntil?: Date; reason?: string }> {
   const empId = new mongoose.Types.ObjectId(employeeId);
-  
+
   // Find any active restrictions that cover the given date
   const restriction = await WFHRestriction.findOne({
     employeeId: empId,
     restrictedUntil: { $gte: date },
+    isOverridden: { $ne: true }
   }).sort({ restrictedUntil: -1 });
 
   if (restriction) {
@@ -137,6 +138,22 @@ export async function checkWFHRestriction(
     }
   }
 
+  // New RCD Restriction Check:
+  // If the employee attempts to take WFH, check the most recent preceding working day.
+  // If that day was REMOTE_COMFORT_DAY, then WFH is restricted today.
+  const previousWorkingDayRecord = await Attendance.findOne({
+    employeeId: empId,
+    date: { $lt: date },
+    status: { $nin: ['SCHEDULE_OFF', 'RESTRICTED_HOLIDAY'] },
+  }).sort({ date: -1 });
+
+  if (previousWorkingDayRecord && previousWorkingDayRecord.status === 'REMOTE_COMFORT_DAY') {
+    return {
+      isRestricted: true,
+      reason: 'WFH is not permitted on the working day immediately following a Remote Comfort Day (RCD).',
+    };
+  }
+
   return { isRestricted: false };
 }
 
@@ -150,7 +167,7 @@ export async function runSandwichCheck(
   actorUserId?: string | mongoose.Types.ObjectId
 ): Promise<void> {
   const empId = new mongoose.Types.ObjectId(employeeId);
-  
+
   // We scan records using cycle bounds and an extended boundary buffer to catch leaves crossing boundaries
   const { startDate, endDate, cycleMonth, cycleYear } = getCycleBoundsForDate(changedDate);
   const queryStartDate = new Date(startDate.getTime() - 5 * 24 * 60 * 60 * 1000);
@@ -327,7 +344,7 @@ export async function runSandwichCheck(
         type: 'SANDWICH',
         date: flagDate,
         message: `Sandwich policy violation detected on ${flagDate.toLocaleDateString('en-IN')} (Original: ${originalStatus}). Counted as LWP.`,
-      }).catch(() => {}); // prevent duplicate key error if alert exists
+      }).catch(() => { }); // prevent duplicate key error if alert exists
     }
   }
 
@@ -384,7 +401,7 @@ export async function runWFHRestrictionCheck(
   changedDate: Date
 ): Promise<void> {
   const empId = new mongoose.Types.ObjectId(employeeId);
-  
+
   // Determine calendar week boundaries (Monday to Sunday) for changedDate in UTC
   const date = new Date(changedDate);
   const dow = date.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
@@ -445,7 +462,7 @@ export async function runWFHRestrictionCheck(
           type: 'HALF_DAY_VIOLATION',
           date: vDate,
           message: `${typeLabel} violation marked on ${triggerDateStr}. WFH privilege locked until ${restrictedUntilStr}.`,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
@@ -484,10 +501,10 @@ export async function reScanAllComplianceRules(
   const employees = await Employee.find({ isActive: true });
 
   const now = new Date();
-  
+
   // Get current cycle bounds and metadata
   const currentCycle = getCycleBoundsForDate(now);
-  
+
   // Calculate previous cycle metadata
   let prevCycleMonth = currentCycle.cycleMonth - 1;
   let prevCycleYear = currentCycle.cycleYear;
@@ -592,7 +609,7 @@ export async function reScanAllComplianceRules(
           type: 'HALF_DAY_VIOLATION',
           date: vDate,
           message: `${typeLabel} violation marked on ${triggerDateStr}. WFH privilege locked until ${restrictedUntilStr}.`,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 

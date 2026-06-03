@@ -47,12 +47,13 @@ export async function GET(request: NextRequest) {
       restrictedUntil: { $gte: new Date() }
     })
       .populate('employeeId', 'name department')
+      .populate('overriddenBy', 'email')
       .sort({ restrictedUntil: 1 })
       .lean();
 
     // Dynamically calculate employees "at risk"
     // At risk means: employees with sandwich flags, active WFH restrictions, or LWP > 2 in the current month
-    const activeRestrictionsEmployeeIds = wfhRestrictions.map(r => r.employeeId?._id || r.employeeId);
+    const activeRestrictionsEmployeeIds = wfhRestrictions.filter(r => !r.isOverridden).map(r => r.employeeId?._id || r.employeeId);
     const activeSandwichEmployeeIds = sandwichFlags.filter(f => !f.isOverridden).map(f => f.employeeId?._id || f.employeeId);
 
     // Get all employees

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 
-const publicPaths = ['/login', '/api/auth/login'];
+const publicPaths = ['/login', '/forgot-password', '/api/auth/login'];
 
 const rolePathMap: Record<string, string[]> = {
   admin: ['/admin', '/hr', '/manager'],

@@ -157,7 +157,8 @@ export async function GET(request: NextRequest) {
     // Fetch all WFH restrictions for the fetched employees that are active during or after this week's start
     const wfhRestrictions = await WFHRestriction.find({
       employeeId: { $in: employeeIds },
-      restrictedUntil: { $gte: startObj }
+      restrictedUntil: { $gte: startObj },
+      isOverridden: { $ne: true }
     }).lean();
 
     // Fetch all PAID_SICK_LEAVE, REMOTE_COMFORT_DAY, and HALF_DAY records for the fetched employees in the cycles containing startDate and endDate
@@ -176,6 +177,7 @@ export async function GET(request: NextRequest) {
     const pslMonthlyCounts: Record<string, Record<string, number>> = {};
     const rcdMonthlyCounts: Record<string, Record<string, number>> = {};
     const elMonthlyCounts: Record<string, Record<string, number>> = {};
+    const rcdDates: Record<string, string[]> = {};
     for (const record of monthlyRecords) {
       const empId = record.employeeId.toString();
       const rDate = new Date(record.date);
@@ -197,6 +199,8 @@ export async function GET(request: NextRequest) {
           rcdMonthlyCounts[empId][yearMonthKey] = 0;
         }
         rcdMonthlyCounts[empId][yearMonthKey]++;
+        if (!rcdDates[empId]) rcdDates[empId] = [];
+        rcdDates[empId].push(rDate.toISOString().split('T')[0]);
       } else if (record.status === 'EARLY_LEAVE') {
         if (!elMonthlyCounts[empId]) {
           elMonthlyCounts[empId] = {};
@@ -325,6 +329,7 @@ export async function GET(request: NextRequest) {
       elMonthlyCounts,
       pslBalances,
       sandwichFlags,
+      rcdDates
     });
   } catch (error) {
     console.error('Get attendance error:', error);
@@ -348,11 +353,11 @@ function isToday(date: Date): boolean {
   );
 }
 
-// Helper: check if a date is within last 48 hours
-function isWithin48Hours(date: Date): boolean {
+// Helper: check if a date is within last 7 days
+function isWithin7Days(date: Date): boolean {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  return diffMs >= 0 && diffMs <= 48 * 60 * 60 * 1000;
+  return diffMs >= 0 && diffMs <= 7 * 24 * 60 * 60 * 1000;
 }
 
 // POST /api/attendance — mark attendance (single or bulk)
@@ -437,10 +442,10 @@ export async function POST(request: NextRequest) {
           }, { status: 403 });
         }
       } else if (authUser.role === 'hr') {
-        // HR: 48-hour time limit
-        if (!isWithin48Hours(attendanceDate)) {
+        // HR: 7-day time limit
+        if (!isWithin7Days(attendanceDate)) {
           return NextResponse.json({
-            error: `HR can only mark/edit attendance within 48 hours. Date ${record.date} is outside the 48-hour window.`
+            error: `HR can only mark/edit attendance within 7 days. Date ${record.date} is outside the 7-day window.`
           }, { status: 403 });
         }
       }
@@ -527,7 +532,7 @@ export async function POST(request: NextRequest) {
           const wfhCheck = await checkWFHRestriction(record.employeeId, attendanceDate);
           if (wfhCheck.isRestricted) {
             finalStatus = 'LWP';
-            policyNote = `[Locked WFH Privilege] Converted to LWP due to Half-Day violation.`;
+            policyNote = `[Locked WFH Privilege] Converted to LWP. ${wfhCheck.reason || 'WFH restricted due to previous violations.'}`;
           }
         }
 

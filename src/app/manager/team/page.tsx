@@ -7,6 +7,7 @@ import Pagination from '@/components/Pagination';
 import EmployeeForm from '@/components/EmployeeForm';
 import LoadingState from '@/components/LoadingState';
 import ErrorState from '@/components/ErrorState';
+import { useAuth } from '@/context/AuthContext';
 import type { IEmployee, PaginationInfo, EmployeeFormData } from '@/types';
 
 export default function ManagerTeamPage() {
@@ -46,20 +47,23 @@ export default function ManagerTeamPage() {
     }
   }, [search, department]);
 
+  const { user } = useAuth();
+
   const fetchManagers = useCallback(async () => {
+    if (!user) return;
     try {
       const res = await fetch('/api/employees?limit=1000&managersOnly=true');
       if (!res.ok) return;
       const data = await res.json();
       const mgrs = data.employees
-        .filter((e: any) => e.role === 'manager' || e.role === 'hr' || e.role === 'admin')
+        .filter((e: any) => (e.role === 'manager' || e.role === 'hr' || e.role === 'admin') && (e.userId === user.userId || e._id === user.employeeId || e.email === user.email))
         .map((e: any) => ({ _id: e.userId || e._id, name: e.name }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
       setManagers(mgrs);
     } catch {
       // Silent fail
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchTeam();
@@ -161,6 +165,7 @@ export default function ManagerTeamPage() {
       {/* Add/Edit Employee Form Modal */}
       {showForm && (
         <EmployeeForm
+          currentUserRole={user?.role}
           employee={editingEmployee}
           managers={managers}
           onSubmit={editingEmployee ? handleUpdate : handleCreate}

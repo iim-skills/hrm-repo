@@ -99,6 +99,12 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   const [rcdMonthlyCounts, setRcdMonthlyCounts] = useState<Record<string, Record<string, number>>>({});
   const [elMonthlyCounts, setElMonthlyCounts] = useState<Record<string, Record<string, number>>>({});
   const [pslBalances, setPslBalances] = useState<Record<string, Record<string, number>>>({});
+  const [rcdDates, setRcdDates] = useState<Record<string, string[]>>({});
+  const [lateOverrides, setLateOverrides] = useState<Record<string, any>>({});
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideDate, setOverrideDate] = useState<string>('');
+  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [submittingOverride, setSubmittingOverride] = useState(false);
 
   const { dates, label: weekLabel } = getWeekDates(weekOffset);
 
@@ -142,6 +148,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
       setRcdMonthlyCounts(data.rcdMonthlyCounts || {});
       setElMonthlyCounts(data.elMonthlyCounts || {});
       setPslBalances(data.pslBalances || {});
+      setRcdDates(data.rcdDates || {});
 
       // Build attendance map: employeeId -> dateKey -> attendance
       const map: Record<string, Record<string, IAttendance>> = {};
@@ -160,6 +167,24 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
       setRefreshing(false);
     }
   }, [dates, debouncedSearch, department, managerFilter]);
+
+  const fetchLateOverrides = useCallback(async () => {
+    if (activeRole !== 'employee' && activeRole !== 'manager') return;
+    try {
+      const res = await fetch('/api/attendance/late-override');
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, any> = {};
+        data.requests.forEach((req: any) => {
+          const dKey = toDateKey(new Date(req.date));
+          map[dKey] = req;
+        });
+        setLateOverrides(map);
+      }
+    } catch (e) {
+      console.error('Failed to fetch late overrides', e);
+    }
+  }, [activeRole]);
 
   const fetchManagers = useCallback(async () => {
     try {
@@ -186,9 +211,10 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   const isFirstFetch = useRef(true);
   useEffect(() => {
     fetchAttendance(isFirstFetch.current);
+    fetchLateOverrides();
     isFirstFetch.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset, debouncedSearch, department, managerFilter]);
+  }, [weekOffset, debouncedSearch, department, managerFilter, fetchLateOverrides]);
 
   // Show toast briefly then clear
   const showToast = (message: string, type: 'error' | 'success') => {
@@ -368,6 +394,21 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
     });
   };
 
+  const isRcdWfhRestricted = (employeeId: string, date: Date): boolean => {
+    // Find the immediate previous calendar working day (approximate UI check)
+    const prevDate = new Date(date);
+    prevDate.setDate(prevDate.getDate() - 1);
+    if (prevDate.getDay() === 0) prevDate.setDate(prevDate.getDate() - 2); // if Sunday, go back to Friday
+    if (prevDate.getDay() === 6) prevDate.setDate(prevDate.getDate() - 1); // if Saturday, go back to Friday
+
+    const prevKey = toDateKey(prevDate);
+    // Fallback: Also check the local date format YYYY-MM-DD in case the backend parsed the date differently
+    const prevLocalStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+    
+    const empIdStr = employeeId ? employeeId.toString() : '';
+    return rcdDates[empIdStr]?.includes(prevKey) || rcdDates[empIdStr]?.includes(prevLocalStr) || false;
+  };
+
   const hasUsedPSLThisMonth = (employeeId: string, date: Date): boolean => {
     const cycleKey = toCycleKey(date);
     const count = pslMonthlyCounts[employeeId]?.[cycleKey] || 0;
@@ -389,6 +430,29 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   const isTodayDate = (date: Date): boolean => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
+  };
+
+  const submitLateOverride = async () => {
+    if (!overrideReason.trim()) return;
+    setSubmittingOverride(true);
+    try {
+      const res = await fetch('/api/attendance/late-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: overrideDate, reason: overrideReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit override request');
+      
+      showToast('Override request submitted successfully!', 'success');
+      setShowOverrideModal(false);
+      setOverrideReason('');
+      fetchLateOverrides();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setSubmittingOverride(false);
+    }
   };
 
   if (initialLoading) return <LoadingState message="Loading attendance..." />;
@@ -463,7 +527,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
               maxWidthClass="min-w-[190px]"
             />
           )}
-          {role !== 'employee' && (
+          {(activeRole === 'admin' || activeRole === 'hr') && (
             <CustomSelect
               label="Department"
               value={department}
@@ -541,10 +605,10 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
               </div>
             </div>
           )}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-260px)] rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-slate-200">
-            <thead>
-              <tr className="bg-slate-50">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-slate-50 shadow-sm">
                 {/* Checkbox — only for non-readonly */}
                 {!isReadonly && (
                   <th className="px-3 py-3 text-left w-10">
@@ -643,9 +707,16 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                     const isELRestricted = hasUsedELThisMonth(emp._id, date) && att?.status !== 'EARLY_LEAVE';
 
                     const restrictedList: AttendanceStatus[] = [];
+                    let wfhReason = "";
+
                     if (isRestricted) {
                       restrictedList.push('WFH');
+                      wfhReason = "WFH privilege restricted due to Half-Day/PSL violation in the rolling week.";
+                    } else if (isRcdWfhRestricted(emp._id, date)) {
+                      restrictedList.push('WFH');
+                      wfhReason = "WFH privilege restricted: Cannot be taken on the working day immediately following a Remote Comfort Day.";
                     }
+
                     if (isPSLRestricted) {
                       restrictedList.push('PAID_SICK_LEAVE');
                     }
@@ -673,14 +744,40 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                       >
                         {isReadonly || !editable ? (
                           att ? (
-                            <div className="relative group inline-flex items-center justify-center select-none cursor-not-allowed">
-                              <AttendanceBadge status={att.status} size="sm" />
-                              <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-slate-800 text-white rounded px-1 py-0.5 text-[8px] font-bold transition-all duration-150 pointer-events-none shadow-md z-10 flex items-center gap-0.5">
-                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                </svg>
-                                <span>Locked</span>
+                            <div className="relative group inline-flex flex-col items-center justify-center select-none">
+                              <div className="relative inline-flex items-center justify-center cursor-not-allowed">
+                                <AttendanceBadge status={att.status} size="sm" />
+                                <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-slate-800 text-white rounded px-1 py-0.5 text-[8px] font-bold transition-all duration-150 pointer-events-none shadow-md z-10 flex items-center gap-0.5 whitespace-nowrap">
+                                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
+                                  <span>Locked</span>
+                                </div>
                               </div>
+                              {/* Request Override for LATE */}
+                              {att.status === 'LATE' && user?.employeeId === emp._id && (
+                                <div className="mt-1">
+                                  {lateOverrides[dateKey] ? (
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                      lateOverrides[dateKey].status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                      lateOverrides[dateKey].status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                                      'bg-rose-100 text-rose-700'
+                                    }`}>
+                                      {lateOverrides[dateKey].status}
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        setOverrideDate(dateKey);
+                                        setShowOverrideModal(true);
+                                      }}
+                                      className="text-[9px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-sm border border-indigo-100"
+                                    >
+                                      Override
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <span className="text-[10px] text-slate-300 font-medium select-none cursor-not-allowed">—</span>
@@ -697,6 +794,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                               align={i >= 4 ? 'left' : i < 2 ? 'right' : 'center'}
                               placement={empIdx >= employees.length - 2 ? 'top' : 'bottom'}
                               employeeGender={emp.genderFlag}
+                              wfhRestrictionReason={wfhReason}
                             />
                             {/* Per-cell micro-spinner — overlaid while this specific cell is saving */}
                             {isCellSaving && (
@@ -769,6 +867,53 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {/* Override Request Modal */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">Request Late Override</h3>
+              <button
+                onClick={() => setShowOverrideModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                You are requesting to override your LATE attendance on <span className="font-bold text-slate-800">{overrideDate}</span>. Please provide a valid reason for HR/Admin approval.
+              </p>
+              <textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="E.g., Train delayed, approved by manager..."
+                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none h-24"
+                disabled={submittingOverride}
+              />
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowOverrideModal(false)}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors"
+                disabled={submittingOverride}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitLateOverride}
+                disabled={!overrideReason.trim() || submittingOverride}
+                className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors flex items-center gap-2"
+              >
+                {submittingOverride ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

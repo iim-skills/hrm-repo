@@ -15,6 +15,7 @@ interface AttendanceStatusDropdownProps {
   align?: 'left' | 'right' | 'center';
   placement?: 'top' | 'bottom';
   employeeGender?: 'male' | 'female' | 'other';
+  wfhRestrictionReason?: string;
 }
 
 const statuses = Object.keys(ATTENDANCE_STATUS_CONFIG) as AttendanceStatus[];
@@ -29,6 +30,7 @@ export default function AttendanceStatusDropdown({
   align = 'center',
   placement = 'bottom',
   employeeGender,
+  wfhRestrictionReason,
 }: AttendanceStatusDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -132,7 +134,7 @@ export default function AttendanceStatusDropdown({
                 if (isRestricted) {
                   let restrictionTitle = "Restricted option";
                   if (status === 'WFH') {
-                    restrictionTitle = "WFH privilege restricted due to Half-Day violation in the rolling week";
+                    restrictionTitle = wfhRestrictionReason || "WFH privilege restricted";
                   } else if (status === 'PAID_SICK_LEAVE') {
                     restrictionTitle = "Paid Sick Leave restricted: 0 PSL balance remaining";
                   } else if (status === 'REMOTE_COMFORT_DAY') {

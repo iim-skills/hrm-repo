@@ -6,6 +6,8 @@ export interface IUserDocument extends Document {
   role: 'admin' | 'hr' | 'manager' | 'employee';
   employeeId: mongoose.Types.ObjectId;
   isActive: boolean;
+  resetOtp?: string;
+  resetOtpExpiry?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +38,12 @@ const UserSchema = new Schema<IUserDocument>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    resetOtp: {
+      type: String,
+    },
+    resetOtpExpiry: {
+      type: Date,
     },
   },
   {

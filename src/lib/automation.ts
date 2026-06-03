@@ -52,12 +52,12 @@ export async function generateMonthlySummary(
   let lateCount = 0;
 
   const today = new Date();
-  const isCurrentMonth = calcYear === today.getFullYear() && calcMonth === today.getMonth();
-
+  const isCurrentMonth = today.getTime() >= startDate.getTime() && today.getTime() <= endDate.getTime();
+  
   for (const rec of records) {
     const recDate = new Date(rec.date);
-    // Skip future dates if calculating for the current month
-    if (isCurrentMonth && recDate.getDate() > today.getDate()) {
+    // Skip future dates (important for cycles spanning across months)
+    if (recDate.getTime() > today.getTime()) {
       continue;
     }
 
@@ -97,14 +97,10 @@ export async function generateMonthlySummary(
     }
   }
 
-  // Late LOP penalty logic: first 2 are free, subsequent late arrivals deduct 0.5 present days (Loss of Pay is computed in salary deductions)
-  if (lateCount <= 2) {
-    presentCount += lateCount;
-  } else {
-    presentCount += 2; // First 2 are free
-    const penalizedLateDays = lateCount - 2;
-    presentCount += penalizedLateDays * 0.5;
-  }
+  // Late arrivals count as 1 present day. 
+  // Half days count as 0.5 present days.
+  // The LOP penalty is handled separately in the deductions UI and payroll calculation.
+  presentCount += lateCount + (halfDayCount * 0.5);
 
   const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
   const totalCycleDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -159,9 +155,9 @@ export async function calculateLeaveBalance(
 
   let calcYear = year;
   let calcMonth = month;
-  if (calcYear < 2026 || (calcYear === 2026 && calcMonth < 3)) {
+  if (calcYear < 2026 || (calcYear === 2026 && calcMonth < 4)) {
     calcYear = 2026;
-    calcMonth = 3; // April
+    calcMonth = 4; // May
   }
 
   if (!forceRecalculate) {
@@ -217,9 +213,9 @@ export async function calculateLeaveBalance(
     }
   }
 
-  // Enforce April 2026 as the absolute earliest base month/year for leave calculation
-  const minYear = 2026;
-  const minMonth = 3; // April (0-indexed)
+  // Enforce May 2026 as the absolute earliest base month/year for leave calculation
+  let minYear = 2026;
+  const minMonth = 4; // May (0-indexed)
 
   if (earliestYear < minYear || (earliestYear === minYear && earliestMonth < minMonth)) {
     earliestYear = minYear;

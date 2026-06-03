@@ -98,9 +98,11 @@ interface CalendarGridProps {
   attendanceRecords: Record<string, AttendanceRecord>;
   dates: Date[];
   onRefresh?: () => void;
+  lateOverrides?: Record<string, any>;
+  isSelfProfile?: boolean;
 }
 
-function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: CalendarGridProps) {
+function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverrides = {}, isSelfProfile }: CalendarGridProps) {
   const { user } = useAuth();
   const isAdminOrHr = user?.role === 'admin' || user?.role === 'hr';
 
@@ -118,6 +120,9 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
   const [editStatus, setEditStatus] = useState<AttendanceStatus | ''>('');
   const [editNotes, setEditNotes] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [submittingOverride, setSubmittingOverride] = useState(false);
 
   const isFutureDay = useMemo(() => {
     if (!selectedDayDetail) return false;
@@ -148,7 +153,7 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
     }
 
     if (role === 'hr') {
-      return (now.getTime() - target.getTime()) <= 48 * 60 * 60 * 1000;
+      return (now.getTime() - target.getTime()) <= 7 * 24 * 60 * 60 * 1000;
     }
 
     return false;
@@ -216,6 +221,30 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
     }
   };
 
+  const submitLateOverride = async () => {
+    if (!selectedDayDetail || !overrideReason.trim()) return;
+    setSubmittingOverride(true);
+    try {
+      const dateStr = toDateKey(selectedDayDetail.date);
+      const res = await fetch('/api/attendance/late-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateStr, reason: overrideReason, employeeId: employee._id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit override request');
+
+      alert('Override request submitted successfully!');
+      setShowOverrideModal(false);
+      setOverrideReason('');
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Error submitting request');
+    } finally {
+      setSubmittingOverride(false);
+    }
+  };
+
   return (
     <div>
       {/* Legend Block */}
@@ -244,11 +273,10 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
               return (
                 <div
                   key={day}
-                  className={`py-2 text-center text-xs font-bold transition-colors ${
-                    isWeekend
-                      ? 'bg-rose-50/40 text-rose-500 font-extrabold border-x border-slate-100'
-                      : 'bg-slate-50/70 text-slate-500'
-                  }`}
+                  className={`py-2 text-center text-xs font-bold transition-colors ${isWeekend
+                    ? 'bg-rose-50/40 text-rose-500 font-extrabold border-x border-slate-100'
+                    : 'bg-slate-50/70 text-slate-500'
+                    }`}
                 >
                   {day}
                 </div>
@@ -275,16 +303,14 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
                 <div
                   key={key}
                   onClick={() => setSelectedDayDetail({ date, record })}
-                  className={`aspect-square p-1.5 flex flex-col justify-between cursor-pointer transition-colors group relative ${
-                    isToday ? 'ring-2 ring-indigo-500/30' : ''
-                  } ${getStatusBgClass(record?.status, isToday, isWeekend)}`}
+                  className={`aspect-square p-1.5 flex flex-col justify-between cursor-pointer transition-colors group relative ${isToday ? 'ring-2 ring-indigo-500/30' : ''
+                    } ${getStatusBgClass(record?.status, isToday, isWeekend)}`}
                 >
                   {/* Day count */}
-                  <span className={`text-xs font-bold ${
-                    isToday
-                      ? 'text-indigo-600 bg-indigo-50 w-5 h-5 rounded-full flex items-center justify-center'
-                      : 'text-slate-500'
-                  }`}>
+                  <span className={`text-xs font-bold ${isToday
+                    ? 'text-indigo-600 bg-indigo-50 w-5 h-5 rounded-full flex items-center justify-center'
+                    : 'text-slate-500'
+                    }`}>
                     {date.getDate()}
                   </span>
 
@@ -338,31 +364,30 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
                         .map((status) => {
                           const config = ATTENDANCE_STATUS_CONFIG[status];
                           const isSelected = editStatus === status;
-                        
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            disabled={isSaving}
-                            onClick={() => setEditStatus(status)}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                              isSelected
+
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              disabled={isSaving}
+                              onClick={() => setEditStatus(status)}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${isSelected
                                 ? 'border-indigo-500 bg-indigo-50/60 text-indigo-900 shadow-xs transform scale-[1.01]'
                                 : 'border-slate-100 bg-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50/50'
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSelected && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
-                              )}
-                              {config.label}
-                            </span>
-                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded border shrink-0 ${config.color}`}>
-                              {config.code}
-                            </span>
-                          </button>
-                        );
-                      })}
+                                }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {isSelected && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
+                                )}
+                                {config.label}
+                              </span>
+                              <span className={`px-1.5 py-0.5 text-[9px] font-black rounded border shrink-0 ${config.color}`}>
+                                {config.code}
+                              </span>
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
 
@@ -439,6 +464,25 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
                           : 'Unmarked / No record'}
                       </span>
                     </div>
+                    {selectedDayDetail.record?.status === 'LATE' && (
+                      <div className="mt-3">
+                        {lateOverrides[toDateKey(selectedDayDetail.date)] ? (
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${lateOverrides[toDateKey(selectedDayDetail.date)].status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                            lateOverrides[toDateKey(selectedDayDetail.date)].status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                              'bg-rose-50 text-rose-700 border-rose-100'
+                            }`}>
+                            Override {lateOverrides[toDateKey(selectedDayDetail.date)].status}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setShowOverrideModal(true)}
+                            className="text-[10px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors shadow-sm border border-indigo-100 cursor-pointer"
+                          >
+                            Request Override
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {selectedDayDetail.record && (
@@ -492,6 +536,39 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh }: Calenda
           </div>
         </div>
       </div>
+
+      {showOverrideModal && selectedDayDetail && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">Request Late Override</h3>
+              <button onClick={() => setShowOverrideModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                You are requesting to override your LATE attendance on <span className="font-bold text-slate-800">{toDateKey(selectedDayDetail.date)}</span>. Please provide a valid reason for HR/Admin approval.
+              </p>
+              <textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="E.g., Train delayed, approved by manager..."
+                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 resize-none h-24"
+                disabled={submittingOverride}
+              />
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setShowOverrideModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl disabled:opacity-50 cursor-pointer transition-colors">Cancel</button>
+              <button onClick={submitLateOverride} disabled={!overrideReason.trim() || submittingOverride} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 shadow-sm cursor-pointer transition-colors">
+                {submittingOverride ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -507,7 +584,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
   const today = new Date();
   const currentCycle = getCycleBoundsForDate(today);
   const defaultYear = currentCycle.cycleYear < 2026 ? 2026 : currentCycle.cycleYear;
-  const defaultMonth = defaultYear === 2026 && (currentCycle.cycleMonth - 1) < 3 ? 3 : (currentCycle.cycleMonth - 1);
+  const defaultMonth = defaultYear === 2026 && (currentCycle.cycleMonth - 1) < 4 ? 4 : (currentCycle.cycleMonth - 1);
   const [selectedYear, setSelectedYear] = useState(defaultYear);
   const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
 
@@ -516,7 +593,9 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
   const [history, setHistory] = useState<AttendanceRecord[]>(null as any);
   const [wfhRestriction, setWfhRestriction] = useState<{ restrictedUntil: string; reason: string } | null>(null);
+  const [sandwichFlags, setSandwichFlags] = useState<string[]>([]);
   const [tierHistory, setTierHistory] = useState<any[]>([]);
+  const [lateOverrides, setLateOverrides] = useState<Record<string, any>>({});
 
   // Generate date array for the custom cycle (21st of previous month to 20th of current month)
   const datesInMonth = useMemo(() => {
@@ -596,9 +675,8 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
       }
 
       // 1. Fetch Monthly Summary & Leave Balance
-      const summaryUrl = `/api/attendance/summary?year=${selectedYear}&month=${selectedMonth}${
-        employeeId ? `&employeeId=${employeeId}` : ''
-      }`;
+      const summaryUrl = `/api/attendance/summary?year=${selectedYear}&month=${selectedMonth}${employeeId ? `&employeeId=${employeeId}` : ''
+        }`;
       const summaryRes = await fetch(summaryUrl);
       if (!summaryRes.ok) {
         const errData = await summaryRes.json().catch(() => ({}));
@@ -623,6 +701,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
         balance: 0
       });
       setWfhRestriction(summaryData.wfhRestriction || null);
+      setSandwichFlags(summaryData.sandwichFlags || []);
 
       // 2. Fetch Detailed Attendance Records for the Date Range
       const startYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
@@ -630,9 +709,8 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
       const firstDay = toDateKey(new Date(startYear, startMonth, 21));
       const lastDay = toDateKey(new Date(selectedYear, selectedMonth, 20));
 
-      const historyUrl = `/api/attendance?startDate=${firstDay}&endDate=${lastDay}${
-        employeeId ? `&employeeId=${employeeId}` : ''
-      }`;
+      const historyUrl = `/api/attendance?startDate=${firstDay}&endDate=${lastDay}${employeeId ? `&employeeId=${employeeId}` : ''
+        }`;
       const historyRes = await fetch(historyUrl);
       if (!historyRes.ok) {
         const errData = await historyRes.json().catch(() => ({}));
@@ -647,14 +725,27 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
       setHistory(sortedHistory);
 
       // 3. Fetch Roster Tier History (6 months)
-      const tierHistoryUrl = `/api/automation/tiers?history=true${
-        employeeId ? `&employeeId=${employeeId}` : ''
-      }`;
+      const tierHistoryUrl = `/api/automation/tiers?history=true${employeeId ? `&employeeId=${employeeId}` : ''
+        }`;
       const tierHistoryRes = await fetch(tierHistoryUrl);
       if (tierHistoryRes.ok) {
         const tierHistoryData = await tierHistoryRes.json();
         setTierHistory(tierHistoryData.history || []);
       }
+
+      // 4. Fetch Late Overrides
+      const lateOverridesUrl = `/api/attendance/late-override${employeeId ? `?employeeId=${employeeId}` : ''
+        }`;
+      const lateRes = await fetch(lateOverridesUrl);
+      if (lateRes.ok) {
+        const lateData = await lateRes.json();
+        const overridesMap: Record<string, any> = {};
+        lateData.requests?.forEach((req: any) => {
+          overridesMap[toDateKey(new Date(req.date))] = req;
+        });
+        setLateOverrides(overridesMap);
+      }
+
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
       setError(err.message || 'An error occurred while fetching dashboard metrics.');
@@ -704,8 +795,8 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
   const pslTaken = summary?.pslCount || 0;
   const lwpTaken = summary?.lwpCount || 0;
 
-  // Late LOP breakdown: first 2 are free, subsequent deduct 0.5 days each
-  const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.5 : 0;
+  // Late LOP breakdown: first 2 are free, subsequent deduct 0.25 days each
+  const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
   const baseLwpTaken = Math.max(0, lwpTaken - plannedLeaveCount); // lwpCount is now pure LWP!
 
   // Total LOP / Absences: pslTaken + halfDayDeduction + lwpTaken + lateDeduction
@@ -761,18 +852,23 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
             onChange={(v: number) => setSelectedMonth(v)}
             options={monthsList
               .map((m, idx) => ({ value: idx, label: m }))
-              .filter((m) => !(selectedYear === 2026 && m.value < 3))}
+              .filter((m) => {
+                if (selectedYear === 2026 && m.value < 4) return false;
+                if (selectedYear > currentCycle.cycleYear) return false;
+                if (selectedYear === currentCycle.cycleYear && m.value > currentCycle.cycleMonth - 1) return false;
+                return true;
+              })}
           />
           <CustomSelect
             label="Year"
             value={selectedYear}
             onChange={(v: number) => {
               setSelectedYear(v);
-              if (v === 2026 && selectedMonth < 3) {
-                setSelectedMonth(3);
+              if (v === 2026 && selectedMonth < 4) {
+                setSelectedMonth(4);
               }
             }}
-            options={[2026, 2027].map((y) => ({ value: y, label: String(y) }))}
+            options={[2026, 2027].filter(y => y <= currentCycle.cycleYear).map((y) => ({ value: y, label: String(y) }))}
             maxWidthClass="min-w-[100px]"
           />
         </div>
@@ -789,6 +885,22 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
             </p>
             <p className="text-[10px] text-rose-600 mt-2 font-medium italic">
               Reason: &quot;{wfhRestriction.reason}&quot; (In accordance with roster policy guidelines, Half-Day markings trigger automatic rolling 7-day lockout of remote comforts).
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Sandwich Notification Alert Banner */}
+      {sandwichFlags.length > 0 && (
+        <div className="bg-linear-to-r from-orange-50 to-amber-50 border-l-4 border-orange-600 p-5 rounded-2xl shadow-sm flex items-start gap-4 animate-pulse">
+          <span className="text-2xl mt-0.5">🥪</span>
+          <div>
+            <h4 className="text-sm font-extrabold text-orange-900 uppercase tracking-wide">Sandwich Leave Active</h4>
+            <p className="text-xs text-orange-700 mt-1 leading-relaxed">
+              Attendance for <strong>{sandwichFlags.map(d => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })).join(', ')}</strong> has been marked as <strong>LWP</strong> due to the sandwich policy.
+            </p>
+            <p className="text-[10px] text-orange-600 mt-2 font-medium italic">
+              (In accordance with roster policy guidelines, unauthorized absences surrounding off-days or holidays trigger automatic deduction of the intervening days).
             </p>
           </div>
         </div>
@@ -1078,7 +1190,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
 
             {/* Present */}
             <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide leading-none">Present</span>
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide leading-none">Present in Office</span>
               <span className="text-2xl font-black text-emerald-800 leading-none">{summary?.presentCount || 0}</span>
               <span className="text-[10px] text-emerald-500 leading-none">Office days</span>
             </div>
@@ -1154,100 +1266,134 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
         </div>
 
 
-        {/* Card 2: Paid Sick Leave (PSL) Balance */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <span>🏥</span> Paid Sick Leave (PSL) Balance
+        {/* Unified Card: Leave Balance & Salary Deductions */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
+          <h2 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-100 pb-4">
+            <span>⚖️</span> Leave Balance & Salary Deductions
           </h2>
 
-          <div className="flex flex-col gap-6">
-            <div className="bg-linear-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100 text-center flex flex-col justify-center items-center">
-              <p className="text-xs text-indigo-700 font-bold uppercase tracking-widest">Available Balance</p>
-              <p className="text-5xl font-black text-indigo-900 mt-2 shadow-sm inline-block px-5 py-2 bg-white rounded-2xl border border-indigo-100">
-                {adjustedAvailablePsl.toFixed(1)} <span className="text-sm font-semibold text-indigo-500">days</span>
-              </p>
-              <p className="text-[11px] text-indigo-500 mt-2.5">Unused PSL carries forward automatically every month.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
+            {/* Left Column: Highlights */}
+            <div className="flex flex-col gap-4">
+              <div className="bg-linear-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100 text-center flex flex-col justify-center items-center flex-1">
+                <p className="text-xs text-indigo-700 font-bold uppercase tracking-widest">Available Balance</p>
+                <p className="text-5xl font-black text-indigo-900 mt-2 shadow-sm inline-block px-5 py-2 bg-white rounded-2xl border border-indigo-100">
+                  {adjustedAvailablePsl} <span className="text-sm font-semibold text-indigo-500">days</span>
+                </p>
+                <p className="text-[11px] text-indigo-500 mt-2.5">Unused PSL carries forward automatically.</p>
+              </div>
+
+              <div className="bg-linear-to-br from-rose-50 to-amber-50 rounded-xl p-5 border border-rose-100 text-center flex flex-col justify-center items-center flex-1">
+                <p className="text-xs text-rose-700 font-bold uppercase tracking-widest">Est. Salary Deduction</p>
+                <p className="text-5xl font-black text-rose-900 mt-2 shadow-sm inline-block px-5 py-2 bg-white rounded-2xl border border-rose-100">
+                  {salaryDeductionDays} <span className="text-sm font-semibold text-rose-500">days</span>
+                </p>
+                <p className="text-[11.5px] text-rose-600 font-semibold mt-2.5">
+                  {salaryDeductionDays > 0
+                    ? `⚠️ LOP applied: money will deduct for ${salaryDeductionDays} days`
+                    : '✅ No LOP deductions applied this month'}
+                </p>
+              </div>
             </div>
 
-            <div className="flex flex-col space-y-3 text-sm">
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Carried Forward (Prev. Month):</span>
-                <span className="font-bold text-slate-800">{balance?.carriedForward !== undefined ? balance.carriedForward.toFixed(1) : '0.0'} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Allocated This Month:</span>
-                <span className="font-bold text-emerald-600">+{balance?.allocated !== undefined ? balance.allocated.toFixed(1) : '0.0'} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Used (Sick PSL Taken):</span>
-                <span className="font-bold text-rose-600">-{pslTaken.toFixed(1)} days</span>
-              </div>
-              {(halfDayDeduction + lwpTaken) > 0 && (
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-500 font-medium">Adjusted Lates, Half Days & LWPs:</span>
-                  <span className="font-bold text-rose-600">-{Math.min(totalPslBalance - pslTaken, halfDayDeduction + lwpTaken).toFixed(1)} days</span>
+            {/* Right Column: Breakdown */}
+            <div className="flex flex-col space-y-4 text-sm bg-slate-50 p-5 rounded-xl border border-slate-100 justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">1. Starting PSL Balance</h3>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-600 font-medium pl-2">Carried Forward (Prev. Month):</span>
+                  <span className="font-bold text-slate-800">{balance?.carriedForward !== undefined ? balance.carriedForward : 0} days</span>
                 </div>
-              )}
+                <div className="flex justify-between border-b border-slate-200 pb-2 mt-2">
+                  <span className="text-slate-600 font-medium pl-2">Allocated This Month:</span>
+                  <span className="font-bold text-emerald-600">+{balance?.allocated !== undefined ? balance.allocated : 0} days</span>
+                </div>
+                <div className="flex justify-between pt-2">
+                  <span className="text-slate-800 font-bold">Total Starting PSL:</span>
+                  <span className="font-black text-indigo-600">{totalPslBalance} days</span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">2. Absences & Penalties (Deductions)</h3>
+                {totalLOPAbsences === 0 ? (
+                  <div className="text-center py-4 text-slate-400 italic border-b border-slate-200 mb-2">
+                    No absences or penalties this month.
+                  </div>
+                ) : (
+                  <div className="flex flex-col space-y-2 border-b border-slate-200 pb-2">
+                    {pslTaken > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-medium pl-2">Paid Sick Leave Taken:</span>
+                        <span className="font-bold text-rose-600">-{pslTaken} days</span>
+                      </div>
+                    )}
+                    {halfDayDeduction > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-medium pl-2">Half-Day Absences:</span>
+                        <span className="font-bold text-rose-600">-{halfDayDeduction} days</span>
+                      </div>
+                    )}
+                    {baseLwpTaken > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-medium pl-2">Leave Without Pay (LWP):</span>
+                        <span className="font-bold text-rose-600">-{baseLwpTaken} days</span>
+                      </div>
+                    )}
+                    {plannedLeaveCount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-medium pl-2">Planned Leave:</span>
+                        <span className="font-bold text-rose-600">-{plannedLeaveCount} days</span>
+                      </div>
+                    )}
+                    {lateDeduction > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-medium pl-2">Late Arrivals ({lateCount} lates):</span>
+                        <span className="font-bold text-rose-600">-{lateDeduction} days</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-between pt-2">
+                  <span className="text-slate-800 font-bold">Total Deductions:</span>
+                  <span className="font-black text-rose-600">-{totalLOPAbsences} days</span>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 mt-4 flex flex-col items-center text-center shadow-sm">
+                <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">Final Calculation</span>
+
+                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 text-sm font-medium text-slate-600 mb-4">
+                  <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                    Starting: <span className="font-bold text-slate-800">{totalPslBalance}</span>
+                  </div>
+                  <span className="text-slate-400 font-bold">-</span>
+                  <div className="bg-white px-3 py-1.5 rounded-lg border border-rose-100 shadow-sm text-rose-600">
+                    Deductions: <span className="font-bold">{totalLOPAbsences}</span>
+                  </div>
+                </div>
+
+                <div className="w-full max-w-xs h-px bg-indigo-100 mb-4" />
+
+                <div className="flex flex-col items-center gap-1">
+                  <div className="text-base font-bold text-slate-800">
+                    Available PSL: <span className="text-2xl font-black text-indigo-600 ml-1">{adjustedAvailablePsl} <span className="text-sm font-bold">days</span></span>
+                  </div>
+                  {salaryDeductionDays > 0 && (
+                    <div className="text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100 mt-2">
+                      ⚠️ Salary Deduction: {salaryDeductionDays} days
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-150 text-[11px] text-slate-500 mt-5 flex gap-2">
-            <span>ℹ️</span>
-            <span>All records and allocations are audited and updated automatically at the beginning of each calendar month.</span>
-          </div>
-        </div>
-
-        {/* Card 3: Estimated Salary Deductions Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <span>💰</span> Estimated Salary Deductions
-          </h2>
-
-          <div className="flex flex-col gap-6">
-            <div className="bg-linear-to-br from-rose-50 to-amber-50 rounded-xl p-5 border border-rose-100 text-center flex flex-col justify-center items-center">
-              <p className="text-xs text-rose-700 font-bold uppercase tracking-widest">Est. Salary Deduction</p>
-              <p className="text-5xl font-black text-rose-900 mt-2 shadow-sm inline-block px-5 py-2 bg-white rounded-2xl border border-rose-100">
-                {salaryDeductionDays.toFixed(1)} <span className="text-sm font-semibold text-rose-500">days</span>
-              </p>
-              <p className="text-[11.5px] text-rose-600 font-semibold mt-2.5">
-                {salaryDeductionDays > 0
-                  ? `⚠️ LOP applied: money will deduct for ${salaryDeductionDays.toFixed(1)} days`
-                  : '✅ No LOP deductions applied this month'}
-              </p>
-            </div>
-
-            <div className="flex flex-col space-y-3 text-sm">
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Total PSL Balance:</span>
-                <span className="font-bold text-slate-800">+{totalPslBalance.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Half-Day Absences:</span>
-                <span className="font-bold text-rose-600">-{halfDayDeduction.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Paid Sick Leave Taken:</span>
-                <span className="font-bold text-rose-600">-{pslTaken.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Leave Without Pay (LWP):</span>
-                <span className="font-bold text-rose-600">-{baseLwpTaken.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Planned Leave:</span>
-                <span className="font-bold text-rose-600">-{plannedLeaveCount.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-medium">Late Arrivals ({lateCount} lates):</span>
-                <span className="font-bold text-rose-600">-{lateDeduction.toFixed(1)} days</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-150 text-[11px] text-slate-500 mt-5 flex gap-2 leading-relaxed">
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-[11px] text-slate-500 mt-5 flex gap-2 leading-relaxed">
             <span>ℹ️</span>
             <span>
-              <strong>Loss of Pay (LOP) Rule:</strong> If monthly sick leaves, half days (0.5 LOP per half day), and LWPs exceed total PSL balance, salary is deducted for the negative balance difference.
+              <strong>Loss of Pay (LOP) Rule:</strong> If monthly sick leaves, half days (0.5 LOP per half day), and LWPs exceed total PSL balance, salary is deducted for the negative balance difference. All records are audited automatically at the beginning of each calendar month.
             </span>
           </div>
         </div>
@@ -1267,6 +1413,8 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
             attendanceRecords={attendanceMap}
             dates={datesInMonth}
             onRefresh={() => fetchDashboardData(true)}
+            lateOverrides={lateOverrides}
+            isSelfProfile={isSelfProfile}
           />
         )}
       </div>

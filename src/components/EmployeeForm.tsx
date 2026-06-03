@@ -8,6 +8,7 @@ interface EmployeeFormProps {
   managers: { _id: string; name: string }[];
   onSubmit: (data: EmployeeFormData) => Promise<void>;
   onClose: () => void;
+  currentUserRole?: string;
 }
 
 const departments = [
@@ -25,7 +26,7 @@ const departments = [
   'PRODUCT DELIVERY',
 ];
 
-export default function EmployeeForm({ employee, managers, onSubmit, onClose }: EmployeeFormProps) {
+export default function EmployeeForm({ employee, managers, onSubmit, onClose, currentUserRole }: EmployeeFormProps) {
   const isEdit = !!employee;
 
   const [formData, setFormData] = useState<EmployeeFormData>({
@@ -36,7 +37,7 @@ export default function EmployeeForm({ employee, managers, onSubmit, onClose }: 
     genderFlag: 'male',
     joiningDate: new Date().toISOString().split('T')[0],
     currentRosterTier: 1,
-    managerId: '',
+    managerId: managers.length === 1 ? managers[0]._id : '',
     role: 'employee',
     isActive: true,
   });
@@ -214,7 +215,6 @@ export default function EmployeeForm({ employee, managers, onSubmit, onClose }: 
               >
                 <option value="male">Male</option>
                 <option value="female">Female</option>
-                <option value="other">Other</option>
               </select>
             </div>
             <div>
@@ -240,9 +240,22 @@ export default function EmployeeForm({ employee, managers, onSubmit, onClose }: 
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
               >
                 <option value="employee">Employee</option>
-                <option value="manager">Manager</option>
-                <option value="hr">HR</option>
-                <option value="admin">Admin</option>
+                {(currentUserRole === 'hr' || currentUserRole === 'admin') && (
+                  <option value="hr">HR</option>
+                )}
+                {currentUserRole === 'admin' && (
+                  <>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </>
+                )}
+                {!currentUserRole && (
+                  <>
+                    <option value="manager">Manager</option>
+                    <option value="hr">HR</option>
+                    <option value="admin">Admin</option>
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -260,21 +273,9 @@ export default function EmployeeForm({ employee, managers, onSubmit, onClose }: 
             </div>
           </div>
 
-          {/* Row 5: Tier + Active */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Roster Tier</label>
-              <select
-                value={formData.currentRosterTier}
-                onChange={(e) => handleChange('currentRosterTier', parseInt(e.target.value))}
-                className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-              >
-                <option value={1}>Tier 1</option>
-                <option value={2}>Tier 2</option>
-                <option value={3}>Tier 3</option>
-              </select>
-            </div>
-            <div className="flex items-end pb-1">
+          {/* Row 5: Active Status */}
+          <div>
+            <div className="flex items-center pt-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"

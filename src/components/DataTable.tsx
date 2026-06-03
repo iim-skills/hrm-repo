@@ -122,12 +122,5 @@ export function getEmployeeColumns(basePath?: string): Column[] {
         />
       ),
     },
-    {
-      key: 'currentRosterTier',
-      label: 'Tier',
-      render: (emp) => (
-        <Badge variant={`tier${emp.currentRosterTier}`} label={`Tier ${emp.currentRosterTier}`} />
-      ),
-    },
   ];
 }

@@ -123,10 +123,7 @@ export default function MonthEndTiersPage() {
             value={selectedTierYear}
             onChange={(val) => setSelectedTierYear(val)}
             maxWidthClass="min-w-[90px]"
-            options={[
-              { value: 2026, label: '2026' },
-              { value: 2027, label: '2027' }
-            ]}
+            options={[2026, 2027].filter(y => y <= currentCycle.cycleYear).map((y) => ({ value: y, label: String(y) }))}
           />
 
           <CustomSelect
@@ -134,10 +131,12 @@ export default function MonthEndTiersPage() {
             value={selectedTierMonth}
             onChange={(val) => setSelectedTierMonth(val)}
             maxWidthClass="min-w-[120px]"
-            options={['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => ({
-              value: idx,
-              label: m
-            }))}
+            options={['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => ({ value: idx, label: m })).filter((m) => {
+              if (selectedTierYear === 2026 && m.value < 4) return false;
+              if (selectedTierYear > currentCycle.cycleYear) return false;
+              if (selectedTierYear === currentCycle.cycleYear && m.value > currentCycle.cycleMonth - 1) return false;
+              return true;
+            })}
           />
 
           <CustomSelect

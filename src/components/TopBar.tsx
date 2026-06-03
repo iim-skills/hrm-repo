@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext';
 import Badge from './Badge';
+import NotificationBell from './NotificationBell';
 
 export default function TopBar() {
   const { user, logout } = useAuth();
@@ -15,6 +16,7 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-4">
+        {user?.role === 'admin' && <NotificationBell />}
         <Badge variant={user?.role || 'employee'} label={user?.role?.toUpperCase() || 'USER'} />
         <div className="h-5 w-px bg-slate-200" />
         <button

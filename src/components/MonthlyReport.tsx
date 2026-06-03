@@ -37,7 +37,7 @@ const MONTHS = [
   { label: 'December', value: 11 },
 ];
 
-const YEARS = [2026];
+const YEARS = [2026, 2027];
 
 export default function MonthlyReport({ role }: MonthlyReportProps) {
   const isEmployeeSelf = role === 'employee';
@@ -45,7 +45,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
   const today = new Date();
   const currentCycle = getCycleBoundsForDate(today);
   const defaultYear = currentCycle.cycleYear < 2026 ? 2026 : currentCycle.cycleYear;
-  const defaultMonth = defaultYear === 2026 && (currentCycle.cycleMonth - 1) < 3 ? 3 : (currentCycle.cycleMonth - 1);
+  const defaultMonth = defaultYear === 2026 && (currentCycle.cycleMonth - 1) < 4 ? 4 : (currentCycle.cycleMonth - 1);
   const [selectedMonth, setSelectedMonth] = useState<number>(defaultMonth);
   const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
   const [search, setSearch] = useState('');
@@ -368,7 +368,12 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
             label="Month"
             value={selectedMonth}
             onChange={(v: number) => setSelectedMonth(v)}
-            options={MONTHS.filter((m) => !(selectedYear === 2026 && m.value < 3))}
+            options={MONTHS.filter((m) => {
+              if (selectedYear === 2026 && m.value < 4) return false;
+              if (selectedYear > currentCycle.cycleYear) return false;
+              if (selectedYear === currentCycle.cycleYear && m.value > currentCycle.cycleMonth - 1) return false;
+              return true;
+            })}
           />
 
           <CustomSelect
@@ -376,11 +381,11 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
             value={selectedYear}
             onChange={(v: number) => {
               setSelectedYear(v);
-              if (v === 2026 && selectedMonth < 3) {
-                setSelectedMonth(3);
+              if (v === 2026 && selectedMonth < 4) {
+                setSelectedMonth(4);
               }
             }}
-            options={YEARS.map((y) => ({ value: y, label: String(y) }))}
+            options={YEARS.filter((y) => y <= currentCycle.cycleYear).map((y) => ({ value: y, label: String(y) }))}
             maxWidthClass="min-w-[100px]"
           />
 
