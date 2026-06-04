@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const history = searchParams.get('history') === 'true';
     const stats = searchParams.get('stats') === 'true';
+    const force = searchParams.get('force') === 'true';
     
     const today = new Date();
     const currentCycle = getCycleBoundsForDate(today);
@@ -139,20 +140,19 @@ export async function GET(request: NextRequest) {
     const tierMap = new Map(calculatedTiers.map(t => [t.employeeId.toString(), t]));
     const summaryMap = new Map(frozenSummaries.map(s => [s.employeeId.toString(), s]));
 
-    // Automatically calculate/refresh tiers only for missing employees to ensure live data in real-time
+    // Automatically calculate/refresh tiers for either missing employees or all employees if forced
     const operatorId = authUser.userId || 'SYSTEM';
-    const missingEmployees = employees.filter(emp => !tierMap.has(emp._id.toString()));
 
-    if (missingEmployees.length > 0) {
-      for (const emp of missingEmployees) {
+    if (force) {
+      for (const emp of employees) {
         try {
-          await runTierCalculationForEmployee(emp._id, year, month, false, operatorId);
+          await runTierCalculationForEmployee(emp._id, year, month, true, operatorId);
         } catch (err) {
-          console.error(`Error auto-calculating tier for missing employee ${emp.name}:`, err);
+          console.error(`Error forcing tier calculation for employee ${emp.name}:`, err);
         }
       }
 
-      // Re-fetch calculations to include the newly calculated missing tiers and summaries
+      // Re-fetch calculations to include the newly calculated tiers and summaries
       calculatedTiers = await EmployeeTier.find({ year, month }).lean();
       frozenSummaries = await FrozenMonthlySummary.find({ year, month }).lean();
 
@@ -161,6 +161,28 @@ export async function GET(request: NextRequest) {
 
       summaryMap.clear();
       frozenSummaries.forEach(s => summaryMap.set(s.employeeId.toString(), s));
+    } else {
+      const missingEmployees = employees.filter(emp => !tierMap.has(emp._id.toString()));
+
+      if (missingEmployees.length > 0) {
+        for (const emp of missingEmployees) {
+          try {
+            await runTierCalculationForEmployee(emp._id, year, month, false, operatorId);
+          } catch (err) {
+            console.error(`Error auto-calculating tier for missing employee ${emp.name}:`, err);
+          }
+        }
+
+        // Re-fetch calculations to include the newly calculated missing tiers and summaries
+        calculatedTiers = await EmployeeTier.find({ year, month }).lean();
+        frozenSummaries = await FrozenMonthlySummary.find({ year, month }).lean();
+
+        tierMap.clear();
+        calculatedTiers.forEach(t => tierMap.set(t.employeeId.toString(), t));
+
+        summaryMap.clear();
+        frozenSummaries.forEach(s => summaryMap.set(s.employeeId.toString(), s));
+      }
     }
 
     const listings = employees.map(emp => {

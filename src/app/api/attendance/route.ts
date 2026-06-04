@@ -436,18 +436,24 @@ export async function POST(request: NextRequest) {
 
       if (authUser.role === 'admin') {
         // Admin: can edit attendance for current cycle only, not previous cycles
+        // TEMPORARILY DISABLED:
+        /*
         if (toCycleKey(attendanceDate) !== toCycleKey(new Date())) {
           return NextResponse.json({
             error: `Admin can only mark attendance for the current cycle. Date ${record.date} is outside the current cycle.`
           }, { status: 403 });
         }
+        */
       } else if (authUser.role === 'hr') {
         // HR: 7-day time limit
+        // TEMPORARILY DISABLED:
+        /*
         if (!isWithin7Days(attendanceDate)) {
           return NextResponse.json({
             error: `HR can only mark/edit attendance within 7 days. Date ${record.date} is outside the 7-day window.`
           }, { status: 403 });
         }
+        */
       }
     }
 

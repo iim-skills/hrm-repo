@@ -148,6 +148,11 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
       return true;
     }
 
+    // TEMPORARILY DISABLED TIME LIMITS FOR ADMIN & HR:
+    if (role === 'admin' || role === 'hr') {
+      return true;
+    }
+
     if (role === 'admin') {
       return target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
     }
@@ -824,7 +829,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
       )}
 
       {/* Header Panel */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+      <div className="sticky top-0 z-30 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/95 backdrop-blur-sm border border-slate-200 p-6 rounded-2xl shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
             {employeeId ? `Profile of ${displayUser?.name}` : `Welcome Back, ${displayUser?.name}!`}

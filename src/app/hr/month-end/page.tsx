@@ -23,10 +23,10 @@ export default function MonthEndTiersPage() {
   const [selectedManager, setSelectedManager] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
 
-  const fetchTiersListings = useCallback(async (yr = selectedTierYear, mo = selectedTierMonth) => {
+  const fetchTiersListings = useCallback(async (yr = selectedTierYear, mo = selectedTierMonth, force = false) => {
     try {
       setLoadingTiers(true);
-      const res = await fetch(`/api/automation/tiers?year=${yr}&month=${mo}`);
+      const res = await fetch(`/api/automation/tiers?year=${yr}&month=${mo}${force ? '&force=true' : ''}`);
       if (!res.ok) throw new Error('Failed to load roster tiers');
       const data = await res.json();
       const rawListings = data.listings || [];
@@ -207,6 +207,17 @@ export default function MonthEndTiersPage() {
               Tier 3
             </button>
           </div>
+
+          <button
+            onClick={() => fetchTiersListings(selectedTierYear, selectedTierMonth, true)}
+            disabled={loadingTiers}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-all duration-200 cursor-pointer shadow-xs shadow-indigo-600/10 shrink-0 h-[38px]"
+          >
+            <svg className={`w-3.5 h-3.5 ${loadingTiers ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+            </svg>
+            {loadingTiers ? 'Recalculating...' : 'Recalculate Tiers'}
+          </button>
         </div>
       </div>
 

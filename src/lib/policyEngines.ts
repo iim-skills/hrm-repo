@@ -532,6 +532,11 @@ export async function reScanAllComplianceRules(
     await generateMonthlySummary(empId, currentCycle.cycleYear, currentCycle.cycleMonth - 1);
     await calculateLeaveBalance(empId, currentCycle.cycleYear, currentCycle.cycleMonth - 1);
 
+    // Recalculate and update roster tiers for both previous and current cycles to avoid stale/frozen records
+    const opId = actorUserId ? actorUserId.toString() : 'SYSTEM';
+    await runTierCalculationForEmployee(empId, prevCycleYear, prevCycleMonth - 1, true, opId);
+    await runTierCalculationForEmployee(empId, currentCycle.cycleYear, currentCycle.cycleMonth - 1, true, opId);
+
     // 3. WFH Restrictions & Compliance Alerts reconciliation for HALF_DAY & PAID_SICK_LEAVE records
     // Get all actual HALF_DAY and PAID_SICK_LEAVE records in the date range
     const violations = await Attendance.find({

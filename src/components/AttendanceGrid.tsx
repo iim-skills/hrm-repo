@@ -47,7 +47,7 @@ function toDateKey(date: Date): string {
 }
 
 // Check if a date cell is editable based on role
-function canEditDate(role: Role, date: Date): boolean {
+function canEditDate(role: any, date: Date): boolean {
   const now = new Date();
   const target = new Date(date);
   target.setHours(0, 0, 0, 0);
@@ -58,6 +58,11 @@ function canEditDate(role: Role, date: Date): boolean {
   if (isFuture) {
     // Admin, HR can mark future attendance (only for SCHEDULE_OFF)
     return role === 'admin' || role === 'hr';
+  }
+
+  // TEMPORARILY DISABLED TIME LIMITS FOR ADMIN & HR:
+  if (role === 'admin' || role === 'hr') {
+    return true;
   }
 
   switch (role) {

@@ -361,7 +361,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       </div>
 
       {/* Control Toolbar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 no-print">
+      <div className="sticky top-0 z-30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/95 backdrop-blur-sm p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 no-print">
         {/* Month Selection */}
         <div className="flex items-center gap-3">
           <CustomSelect
@@ -542,9 +542,9 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       ) : (
         /* Team Table View (Admin, HR, Manager) */
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden print-container">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] custom-scrollbar">
             <table className="min-w-full divide-y divide-slate-200">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-slate-50 shadow-xs">
                 <tr className="bg-slate-50/70">
                   <th
                     onClick={() => handleSort('name')}
