@@ -8,7 +8,7 @@ export default function TopBar() {
   const { user, logout } = useAuth();
 
   return (
-    <header className="fixed top-0 left-64 right-0 topbar-content z-30 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm">
+    <header className="fixed top-0 left-64 right-0 topbar-content z-50 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm">
       <div className="flex items-center gap-2">
         <h2 className="text-lg font-semibold text-slate-800">
           Welcome back, <span className="text-indigo-600">{user?.name || 'User'}</span>

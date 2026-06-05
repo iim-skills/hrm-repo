@@ -9,6 +9,7 @@ export interface IMonthlyAttendanceSummaryDocument extends Document {
   halfDayCount: number;
   wfhCount: number;
   lwpCount: number;
+  plannedLeaveCount: number;
   offDayCount: number;
   totalWorkingDays: number;
   attendanceRate: number;
@@ -50,6 +51,10 @@ const MonthlyAttendanceSummarySchema = new Schema<IMonthlyAttendanceSummaryDocum
       default: 0,
     },
     lwpCount: {
+      type: Number,
+      default: 0,
+    },
+    plannedLeaveCount: {
       type: Number,
       default: 0,
     },

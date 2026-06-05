@@ -48,6 +48,7 @@ export async function generateMonthlySummary(
   let halfDayCount = 0;
   let wfhCount = 0;
   let lwpCount = 0;
+  let plannedLeaveCount = 0;
   let offDayCount = 0;
   let lateCount = 0;
 
@@ -83,8 +84,10 @@ export async function generateMonthlySummary(
         wfhCount++;
         break;
       case 'LWP':
-      case 'PLANNED_LEAVE':
         lwpCount++;
+        break;
+      case 'PLANNED_LEAVE':
+        plannedLeaveCount++;
         break;
       case 'SCHEDULE_OFF':
       case 'RESTRICTED_HOLIDAY':
@@ -132,6 +135,7 @@ export async function generateMonthlySummary(
       halfDayCount,
       wfhCount,
       lwpCount,
+      plannedLeaveCount,
       offDayCount,
       totalWorkingDays,
       attendanceRate,

@@ -9,6 +9,7 @@ export interface IFrozenMonthlySummaryDocument extends Document {
   halfDayCount: number;
   wfhCount: number;
   lwpCount: number;
+  plannedLeaveCount: number;
   offDayCount: number;
   totalWorkingDays: number;
   attendanceRate: number;
@@ -52,6 +53,10 @@ const FrozenMonthlySummarySchema = new Schema<IFrozenMonthlySummaryDocument>(
       default: 0,
     },
     lwpCount: {
+      type: Number,
+      default: 0,
+    },
+    plannedLeaveCount: {
       type: Number,
       default: 0,
     },

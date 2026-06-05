@@ -1,0 +1,26 @@
+[
+  {
+    "_id": "6a213e478133480c5278adbd",
+    "employeeId": "6a210bcf9e4df9a820c230f2",
+    "date": "2026-05-10T00:00:00.000Z",
+    "originalStatus": "SCHEDULE_OFF",
+    "isOverridden": false,
+    "overriddenBy": null,
+    "overrideReason": "",
+    "createdAt": "2026-06-04T08:58:47.863Z",
+    "updatedAt": "2026-06-04T08:58:47.863Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a214a7f306f2d310bbf5174",
+    "employeeId": "6a210c869e4df9a820c2311a",
+    "date": "2026-05-24T00:00:00.000Z",
+    "originalStatus": "SCHEDULE_OFF",
+    "isOverridden": false,
+    "overriddenBy": null,
+    "overrideReason": "",
+    "createdAt": "2026-06-04T09:50:55.773Z",
+    "updatedAt": "2026-06-04T09:50:55.773Z",
+    "__v": 0
+  }
+]

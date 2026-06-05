@@ -802,10 +802,10 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
 
   // Late LOP breakdown: first 2 are free, subsequent deduct 0.25 days each
   const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
-  const baseLwpTaken = Math.max(0, lwpTaken - plannedLeaveCount); // lwpCount is now pure LWP!
+  const baseLwpTaken = lwpTaken; // lwpCount is pure LWP directly from backend summary
 
-  // Total LOP / Absences: pslTaken + halfDayDeduction + lwpTaken + lateDeduction
-  const totalLOPAbsences = pslTaken + halfDayDeduction + lwpTaken + lateDeduction;
+  // Total LOP / Absences: pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction
+  const totalLOPAbsences = pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction;
 
   // Adjusted Available PSL Balance = Max(0, totalPslBalance - totalLOPAbsences)
   const adjustedAvailablePsl = Math.max(0, totalPslBalance - totalLOPAbsences);
@@ -829,7 +829,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
       )}
 
       {/* Header Panel */}
-      <div className="sticky top-0 z-30 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/95 backdrop-blur-sm border border-slate-200 p-6 rounded-2xl shadow-sm">
+      <div className="sticky top-20 z-30 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/95 backdrop-blur-sm border border-slate-200 p-6 rounded-2xl shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
             {employeeId ? `Profile of ${displayUser?.name}` : `Welcome Back, ${displayUser?.name}!`}
@@ -1047,7 +1047,7 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
                   </div>
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="text-xs text-slate-500 font-medium">LWPs:</span>
-                    <span className="text-xs font-bold text-slate-800">{Math.max(0, (summary?.lwpCount || 0) - plannedLeaveCount)}</span>
+                    <span className="text-xs font-bold text-slate-800">{summary?.lwpCount || 0}</span>
                   </div>
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="text-xs text-slate-500 font-medium">Planned Leaves:</span>

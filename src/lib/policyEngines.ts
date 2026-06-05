@@ -498,7 +498,7 @@ export async function runWFHRestrictionCheck(
 export async function reScanAllComplianceRules(
   actorUserId?: string | mongoose.Types.ObjectId
 ): Promise<void> {
-  const employees = await Employee.find({ isActive: true });
+  const employees = await Employee.find({ isActive: true }).select('_id');
 
   const now = new Date();
 
@@ -716,6 +716,7 @@ export async function runTierCalculationForEmployee(
   let pslCount = 0;
   let halfDayCount = 0;
   let lwpCount = 0;
+  let plannedLeaveCount = 0;
   let presentCount = 0;
   let wfhCount = 0;
   let offDayCount = 0;
@@ -729,6 +730,7 @@ export async function runTierCalculationForEmployee(
     pslCount = activeSummary.pslCount;
     halfDayCount = activeSummary.halfDayCount;
     lwpCount = activeSummary.lwpCount;
+    plannedLeaveCount = activeSummary.plannedLeaveCount || 0;
     presentCount = activeSummary.presentCount;
     wfhCount = activeSummary.wfhCount;
     offDayCount = activeSummary.offDayCount;
@@ -750,6 +752,7 @@ export async function runTierCalculationForEmployee(
       halfDayCount,
       wfhCount,
       lwpCount,
+      plannedLeaveCount,
       offDayCount,
       totalWorkingDays,
       attendanceRate,
