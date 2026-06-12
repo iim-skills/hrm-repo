@@ -226,13 +226,20 @@ export async function calculateLeaveBalance(
     earliestMonth = minMonth;
   }
 
-  const isAfterOrAtEarliest = 
-    priorYear > earliestYear || 
-    (priorYear === earliestYear && priorMonth >= earliestMonth);
+  let isManual = false;
+  const existingRecord = await LeaveBalance.findOne({ employeeId: empId, year: calcYear, month: calcMonth }).lean();
+  if (existingRecord && existingRecord.isCarriedForwardManual) {
+    carriedForward = existingRecord.carriedForward;
+    isManual = true;
+  } else {
+    const isAfterOrAtEarliest = 
+      priorYear > earliestYear || 
+      (priorYear === earliestYear && priorMonth >= earliestMonth);
 
-  if (isAfterOrAtEarliest) {
-    const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, forceRecalculate);
-    carriedForward = priorBalanceRecord ? priorBalanceRecord.balance : 0.0;
+    if (isAfterOrAtEarliest) {
+      const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, forceRecalculate);
+      carriedForward = priorBalanceRecord ? priorBalanceRecord.balance : 0.0;
+    }
   }
 
   // Standard allocation: 1.0 PSL days added per month (Sick Leave Policy Engine rule)
@@ -252,6 +259,7 @@ export async function calculateLeaveBalance(
       used,
       carriedForward,
       balance,
+      isCarriedForwardManual: isManual,
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
@@ -279,3 +287,31 @@ export async function runMonthlyAutomation(year: number, month: number) {
 
   return results;
 }
+
+/**
+ * Recalculates and propagates leave balance calculations forward from a starting month and year.
+ */
+export async function recalculateForward(
+  employeeId: string | mongoose.Types.ObjectId,
+  startYear: number,
+  startMonth: number
+) {
+  const empId = new mongoose.Types.ObjectId(employeeId);
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth();
+
+  let y = startYear;
+  let m = startMonth;
+
+  // Propagate calculations from the start month up to 2 months into the future
+  while (y < currentYear || (y === currentYear && m <= currentMonth + 2)) {
+    await calculateLeaveBalance(empId, y, m, true);
+    m++;
+    if (m > 11) {
+      m = 0;
+      y++;
+    }
+  }
+}
+

@@ -804,8 +804,8 @@ export default function EmployeeProfileView({ employeeId, isSelfProfile }: Emplo
   const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
   const baseLwpTaken = lwpTaken; // lwpCount is pure LWP directly from backend summary
 
-  // Total LOP / Absences: pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction
-  const totalLOPAbsences = pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction;
+  // Total LOP / Absences: pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction + plannedLeaveCount
+  const totalLOPAbsences = pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction + plannedLeaveCount;
 
   // Adjusted Available PSL Balance = Max(0, totalPslBalance - totalLOPAbsences)
   const adjustedAvailablePsl = Math.max(0, totalPslBalance - totalLOPAbsences);

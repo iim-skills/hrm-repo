@@ -85,57 +85,71 @@ export async function checkWFHRestriction(
 ): Promise<{ isRestricted: boolean; restrictedUntil?: Date; reason?: string }> {
   const empId = new mongoose.Types.ObjectId(employeeId);
 
-  // Find any active restrictions that cover the given date
-  const restriction = await WFHRestriction.findOne({
-    employeeId: empId,
-    restrictedUntil: { $gte: date },
-    isOverridden: { $ne: true }
-  }).sort({ restrictedUntil: -1 });
-
-  if (restriction) {
-    return {
-      isRestricted: true,
-      restrictedUntil: restriction.restrictedUntil,
-      reason: restriction.reason,
-    };
-  }
-
-  // Dynamic fallback: scan for HALF_DAY or PAID_SICK_LEAVE recorded within the current calendar week (Mon–Sun).
-  // Using Monday-of-week as the anchor prevents last week's half-days or sick leaves from bleeding in.
+  // Determine calendar week boundaries (Monday to Sunday) for the given date in UTC
   const dow = date.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
-  // Days since last Monday: Sun=6 back, Mon=0 back, Tue=1 back …
   const daysSinceMonday = dow === 0 ? 6 : dow - 1;
   const startOfWeek = new Date(date);
   startOfWeek.setUTCDate(startOfWeek.getUTCDate() - daysSinceMonday);
   startOfWeek.setUTCHours(0, 0, 0, 0);
 
-  const endOfWindow = new Date(date);
-  endOfWindow.setUTCHours(23, 59, 59, 999);
+  const expectedSunday = new Date(startOfWeek);
+  expectedSunday.setUTCDate(expectedSunday.getUTCDate() + 6);
+  expectedSunday.setUTCHours(23, 59, 59, 999);
 
-  const violationAttendance = await Attendance.findOne({
+  // Find if there is an active restriction document in the DB for this calendar week
+  const restriction = await WFHRestriction.findOne({
     employeeId: empId,
-    date: { $gte: startOfWeek, $lte: endOfWindow },
-    status: { $in: ['HALF_DAY', 'PAID_SICK_LEAVE'] },
-  }).sort({ date: -1 });
+    restrictedUntil: expectedSunday,
+  });
 
-  if (violationAttendance) {
-    // Restriction ends at end-of-Sunday of the same calendar week as the violation (in UTC)
-    // JS getDay(): 0=Sun, 1=Mon … 5=Fri, 6=Sat
-    const violationDate = new Date(violationAttendance.date);
-    const violationDow = violationDate.getUTCDay();
-    const daysUntilSunday = violationDow === 0 ? 0 : 7 - violationDow;
-    const restrictedUntil = new Date(violationDate);
-    restrictedUntil.setUTCDate(restrictedUntil.getUTCDate() + daysUntilSunday);
-    restrictedUntil.setUTCHours(23, 59, 59, 999);
+  let hasHalfDayOrPslRestriction = false;
+  let restrictionReason = '';
+  let restrictionUntil: Date | undefined = undefined;
 
-    if (restrictedUntil >= date) {
-      const typeLabel = violationAttendance.status === 'HALF_DAY' ? 'Half-Day' : 'Paid Sick Leave';
-      return {
-        isRestricted: true,
-        restrictedUntil,
-        reason: `${typeLabel} violation marked on ${new Date(violationAttendance.date).toLocaleDateString('en-IN')}`,
-      };
+  if (restriction) {
+    if (restriction.isOverridden) {
+      // If the restriction for this week is overridden, it means Half-Day/PSL restriction is waived
+      hasHalfDayOrPslRestriction = false;
+    } else {
+      hasHalfDayOrPslRestriction = true;
+      restrictionReason = restriction.reason;
+      restrictionUntil = restriction.restrictedUntil;
     }
+  } else {
+    // Dynamic fallback: scan for HALF_DAY or PAID_SICK_LEAVE recorded within the current calendar week (Mon–Sun).
+    const endOfWindow = new Date(date);
+    endOfWindow.setUTCHours(23, 59, 59, 999);
+
+    const violationAttendance = await Attendance.findOne({
+      employeeId: empId,
+      date: { $gte: startOfWeek, $lte: endOfWindow },
+      status: { $in: ['HALF_DAY', 'PAID_SICK_LEAVE'] },
+    }).sort({ date: -1 });
+
+    if (violationAttendance) {
+      // Restriction ends at end-of-Sunday of the same calendar week as the violation (in UTC)
+      const violationDate = new Date(violationAttendance.date);
+      const violationDow = violationDate.getUTCDay();
+      const daysUntilSunday = violationDow === 0 ? 0 : 7 - violationDow;
+      const restrictedUntilDate = new Date(violationDate);
+      restrictedUntilDate.setUTCDate(restrictedUntilDate.getUTCDate() + daysUntilSunday);
+      restrictedUntilDate.setUTCHours(23, 59, 59, 999);
+
+      if (restrictedUntilDate >= date) {
+        hasHalfDayOrPslRestriction = true;
+        const typeLabel = violationAttendance.status === 'HALF_DAY' ? 'Half-Day' : 'Paid Sick Leave';
+        restrictionReason = `${typeLabel} violation marked on ${new Date(violationAttendance.date).toLocaleDateString('en-IN')}`;
+        restrictionUntil = restrictedUntilDate;
+      }
+    }
+  }
+
+  if (hasHalfDayOrPslRestriction) {
+    return {
+      isRestricted: true,
+      restrictedUntil: restrictionUntil,
+      reason: restrictionReason,
+    };
   }
 
   // New RCD Restriction Check:

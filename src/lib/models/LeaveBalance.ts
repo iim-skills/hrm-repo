@@ -8,6 +8,7 @@ export interface ILeaveBalanceDocument extends Document {
   used: number;
   carriedForward: number;
   balance: number;
+  isCarriedForwardManual?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +46,10 @@ const LeaveBalanceSchema = new Schema<ILeaveBalanceDocument>(
       type: Number,
       default: 0,
     },
+    isCarriedForwardManual: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -54,8 +59,11 @@ const LeaveBalanceSchema = new Schema<ILeaveBalanceDocument>(
 // Prevent duplicates: one leave balance per employee per month
 LeaveBalanceSchema.index({ employeeId: 1, year: 1, month: 1 }, { unique: true });
 
+if (mongoose.models && mongoose.models.LeaveBalance) {
+  delete (mongoose.models as any).LeaveBalance;
+}
+
 const LeaveBalance: Model<ILeaveBalanceDocument> =
-  mongoose.models.LeaveBalance ||
   mongoose.model<ILeaveBalanceDocument>('LeaveBalance', LeaveBalanceSchema, 'leave_balances');
 
 export default LeaveBalance;

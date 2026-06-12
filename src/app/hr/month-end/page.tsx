@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import CustomSelect from '@/components/CustomSelect';
 import { getCycleBoundsForDate } from '@/lib/cycleUtils';
+import CalendarGrid, { toDateKey } from '@/components/CalendarGrid';
 
 export default function MonthEndTiersPage() {
   const today = new Date();
@@ -22,6 +23,66 @@ export default function MonthEndTiersPage() {
   const [managers, setManagers] = useState<{ _id: string; name: string }[]>([]);
   const [selectedManager, setSelectedManager] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+
+  // Selected employee for detailed calendar modal
+  const [activeEmployeeModal, setActiveEmployeeModal] = useState<any | null>(null);
+  const [modalAttendance, setModalAttendance] = useState<Record<string, any>>({});
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Generate date array for the custom cycle (21st of previous month to 20th of current month)
+  const datesInMonth = useMemo(() => {
+    const startYear = selectedTierMonth === 0 ? selectedTierYear - 1 : selectedTierYear;
+    const startMonth = selectedTierMonth === 0 ? 11 : selectedTierMonth - 1;
+    const startDate = new Date(startYear, startMonth, 21);
+    const endDate = new Date(selectedTierYear, selectedTierMonth, 20);
+
+    const dates: Date[] = [];
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }, [selectedTierMonth, selectedTierYear]);
+
+  // Fetch single employee attendance when the modal is opened
+  useEffect(() => {
+    if (!activeEmployeeModal) return;
+
+    const fetchModalAttendance = async () => {
+      try {
+        setModalLoading(true);
+        const startYear = selectedTierMonth === 0 ? selectedTierYear - 1 : selectedTierYear;
+        const startMonth = selectedTierMonth === 0 ? 11 : selectedTierMonth - 1;
+        const firstDay = toDateKey(new Date(startYear, startMonth, 21));
+        const lastDay = toDateKey(new Date(selectedTierYear, selectedTierMonth, 20));
+
+        const params = new URLSearchParams({
+          startDate: firstDay,
+          endDate: lastDay,
+          employeeId: activeEmployeeModal._id,
+        });
+
+        const res = await fetch(`/api/attendance?${params}`);
+        if (!res.ok) throw new Error('Failed to fetch attendance');
+        const data = await res.json();
+        
+        // Convert array to map: dateKey -> attendance record
+        const map: Record<string, any> = {};
+        for (const att of data.attendance) {
+          const dateKey = toDateKey(new Date(att.date));
+          map[dateKey] = att;
+        }
+        setModalAttendance(map);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setModalLoading(false);
+      }
+    };
+
+    fetchModalAttendance();
+  }, [activeEmployeeModal, selectedTierMonth, selectedTierYear]);
 
   const fetchTiersListings = useCallback(async (yr = selectedTierYear, mo = selectedTierMonth, force = false) => {
     try {
@@ -260,6 +321,7 @@ export default function MonthEndTiersPage() {
                   <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Absence Summary (Frozen)</th>
                   <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Calculated Tier</th>
                   <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Calculation Rule &amp; Audit Log</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -380,6 +442,14 @@ export default function MonthEndTiersPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-5 py-4 text-center">
+                        <button
+                          onClick={() => setActiveEmployeeModal(emp)}
+                          className="px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-white border border-indigo-200 hover:bg-indigo-600 rounded-lg transition-all shadow-sm cursor-pointer"
+                        >
+                          View Sheet
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -388,6 +458,59 @@ export default function MonthEndTiersPage() {
           </div>
         )}
       </div>
+
+      {/* Calendar Overlay Drawer Modal */}
+      {activeEmployeeModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto no-print">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"
+            onClick={() => setActiveEmployeeModal(null)}
+          />
+
+          {/* Dialog block */}
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 z-10 transition-all">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span>📅</span> Attendance Sheet: {activeEmployeeModal.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {activeEmployeeModal.department} · {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][selectedTierMonth]} {selectedTierYear}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveEmployeeModal(null)}
+                  className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body Calendar content */}
+              {modalLoading ? (
+                <div className="py-20 text-center">
+                  <svg className="animate-spin h-8 w-8 text-indigo-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <p className="text-slate-500 font-semibold text-sm">Loading attendance sheet...</p>
+                </div>
+              ) : (
+                <CalendarGrid
+                  employee={activeEmployeeModal}
+                  attendanceRecords={modalAttendance}
+                  dates={datesInMonth}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
