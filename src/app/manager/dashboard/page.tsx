@@ -162,12 +162,31 @@ export default function ManagerDashboard() {
     if (tier === 2) tier2Count++;
     if (tier === 3) tier3Count++;
   }
+  // Severity-based sorting to bubble up critical violations (matching Month-End page)
+  const getEmployeeSeverity = (empId: string) => {
+    const records = monthlyAttendance.filter(r => r.employeeId === empId);
+    const lwp = records.filter(r => r.status === 'LWP').length;
+    const psl = records.filter(r => r.status === 'PAID_SICK_LEAVE').length;
+    const halfDay = records.filter(r => r.status === 'HALF_DAY').length;
+    return lwp + psl + (halfDay * 0.5);
+  };
+
   const tier3Employees = employees
     .filter(emp => (emp.currentRosterTier ?? 1) === 3)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const sevA = getEmployeeSeverity(a._id);
+      const sevB = getEmployeeSeverity(b._id);
+      if (sevB !== sevA) return sevB - sevA;
+      return a.name.localeCompare(b.name);
+    });
   const tier2Employees = employees
     .filter(emp => (emp.currentRosterTier ?? 1) === 2)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const sevA = getEmployeeSeverity(a._id);
+      const sevB = getEmployeeSeverity(b._id);
+      if (sevB !== sevA) return sevB - sevA;
+      return a.name.localeCompare(b.name);
+    });
 
   const getStatusPriority = (status: string | undefined): number => {
     if (!status) return 5; // Pending Action

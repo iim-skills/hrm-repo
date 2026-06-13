@@ -15,16 +15,15 @@ interface NavItem {
 const navItems: Record<Role, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: '📊' },
-    // { label: 'Month-End & Tiers', href: '/hr/month-end', icon: '🎯' },
+    { label: 'Month-End & Tiers', href: '/hr/month-end', icon: '🎯' },
     { label: 'Employees', href: '/admin/employees', icon: '👥' },
     { label: 'Attendance', href: '/admin/attendance', icon: '📅' },
     { label: 'Monthly Report', href: '/admin/report', icon: '📋' },
-    { label: 'Carry Forward', href: '/hr/leave-carry-forward', icon: '🔄' },
     { label: 'Compliance', href: '/hr/compliance', icon: '🛡️' },
   ],
   hr: [
     { label: 'Dashboard', href: '/hr/dashboard', icon: '📊' },
-    // { label: 'Month-End & Tiers', href: '/hr/month-end', icon: '🎯' },
+    { label: 'Month-End & Tiers', href: '/hr/month-end', icon: '🎯' },
     { label: 'Employees', href: '/hr/employees', icon: '👥' },
     { label: 'Attendance', href: '/hr/attendance', icon: '📅' },
     { label: 'Monthly Report', href: '/hr/report', icon: '📋' },
@@ -35,14 +34,14 @@ const navItems: Record<Role, NavItem[]> = {
   manager: [
     { label: 'Dashboard', href: '/manager/dashboard', icon: '📊' },
     { label: 'My Team', href: '/manager/team', icon: '👥' },
-    // { label: 'Month-End & Tiers', href: '/manager/month-end', icon: '🎯' },
+    { label: 'Month-End & Tiers', href: '/manager/month-end', icon: '🎯' },
     { label: 'Attendance', href: '/manager/attendance', icon: '📅' },
     { label: 'Monthly Report', href: '/manager/report', icon: '📋' },
     { label: 'My Profile', href: '/manager/profile', icon: '👤' },
   ],
   employee: [
     { label: 'Dashboard', href: '/employee/dashboard', icon: '📊' },
-    { label: 'My Profile', href: '/employee/profile', icon: '👤' },
+    // { label: 'My Profile', href: '/employee/profile', icon: '👤' },
   ],
 };
 
