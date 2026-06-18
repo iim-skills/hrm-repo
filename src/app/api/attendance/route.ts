@@ -278,9 +278,11 @@ export async function GET(request: NextRequest) {
 
     // Map: employeeId -> cycleKey -> availableBalance
     const pslBalances: Record<string, Record<string, number>> = {};
+    const pslTotalBalances: Record<string, Record<string, number>> = {};
     for (const emp of employees) {
       const empId = emp._id.toString();
       pslBalances[empId] = {};
+      pslTotalBalances[empId] = {};
       for (const { year, month } of uniqueMonths) {
         const yearMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -306,6 +308,7 @@ export async function GET(request: NextRequest) {
         const pslUsed = pslUsedMap[empId]?.[pslUsedKey] || 0.0;
         const availableBalance = Math.max(0, carriedForward + allocated - pslUsed);
         pslBalances[empId][yearMonthKey] = availableBalance;
+        pslTotalBalances[empId][yearMonthKey] = carriedForward + allocated;
       }
     }
 
@@ -328,6 +331,7 @@ export async function GET(request: NextRequest) {
       rcdMonthlyCounts,
       elMonthlyCounts,
       pslBalances,
+      pslTotalBalances,
       sandwichFlags,
       rcdDates
     });
@@ -462,6 +466,92 @@ export async function POST(request: NextRequest) {
     const employeeIds = [...new Set(records.map((r) => r.employeeId))];
     const dbEmployees = await Employee.find({ _id: { $in: employeeIds } }).lean();
     const employeeMap = new Map(dbEmployees.map((e) => [e._id.toString(), e]));
+
+    // Map dates being marked in the current batch per employee to support bulk uploads
+    const batchMarkedDatesByEmp = new Map<string, Set<string>>();
+    for (const record of records) {
+      const empIdStr = record.employeeId.toString();
+      if (!batchMarkedDatesByEmp.has(empIdStr)) {
+        batchMarkedDatesByEmp.set(empIdStr, new Set<string>());
+      }
+      const attendanceDate = new Date(record.date);
+      attendanceDate.setUTCHours(0, 0, 0, 0);
+      batchMarkedDatesByEmp.get(empIdStr)!.add(attendanceDate.toISOString().split('T')[0]);
+    }
+
+    // Sequential marking check for HR role
+    if (authUser.role === 'hr') {
+      for (const record of records) {
+        const emp = employeeMap.get(record.employeeId);
+        if (!emp) {
+          return NextResponse.json({ error: `Employee not found: ${record.employeeId}` }, { status: 404 });
+        }
+
+        const attendanceDate = new Date(record.date);
+        attendanceDate.setUTCHours(0, 0, 0, 0);
+
+        const { startDate, endDate } = getCycleBoundsForDate(attendanceDate);
+
+        // Bypass check 1: Exclude employee's first cycle containing their joiningDate
+        let isFirstCycle = false;
+        if (emp.joiningDate) {
+          const jd = new Date(emp.joiningDate);
+          if (jd >= startDate && jd <= endDate) {
+            isFirstCycle = true;
+          }
+        }
+
+        if (isFirstCycle) {
+          continue;
+        }
+
+        // Bypass check 2: Exclude editing/updating already marked records
+        const existingRecord = await Attendance.findOne({
+          employeeId: record.employeeId,
+          date: attendanceDate,
+        }).lean();
+
+        if (existingRecord) {
+          continue;
+        }
+
+        // Sequential check for new records
+        const expectedCount = Math.round((attendanceDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+        if (expectedCount > 0) {
+          const actualCount = await Attendance.countDocuments({
+            employeeId: record.employeeId,
+            date: { $gte: startDate, $lt: attendanceDate }
+          });
+
+          if (actualCount < expectedCount) {
+            // Find which prior days in the cycle are unmarked
+            const markedRecords = await Attendance.find({
+              employeeId: record.employeeId,
+              date: { $gte: startDate, $lt: attendanceDate }
+            }, { date: 1 }).lean();
+            const markedSet = new Set(markedRecords.map(r => r.date.toISOString().split('T')[0]));
+
+            const unmarkedDays: string[] = [];
+            let checkDate = new Date(startDate);
+            const empBatchSet = batchMarkedDatesByEmp.get(record.employeeId.toString()) || new Set<string>();
+
+            while (checkDate < attendanceDate) {
+              const key = checkDate.toISOString().split('T')[0];
+              if (!markedSet.has(key) && !empBatchSet.has(key)) {
+                unmarkedDays.push(key);
+              }
+              checkDate.setUTCDate(checkDate.getUTCDate() + 1);
+            }
+
+            if (unmarkedDays.length > 0) {
+              return NextResponse.json({
+                error: `Cannot mark attendance for ${emp.name} on ${record.date.split('T')[0]}. Please mark earlier attendance first.`
+              }, { status: 400 });
+            }
+          }
+        }
+      }
+    }
 
     // Upsert attendance records (prevents duplicates)
     const results = [];

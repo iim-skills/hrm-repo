@@ -91,6 +91,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
   const [managerFilter, setManagerFilter] = useState('');
+  const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -378,10 +379,10 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   };
 
   const toggleAllEmployees = () => {
-    if (selectedEmployees.size === employees.length) {
+    if (selectedEmployees.size === displayedEmployees.length) {
       setSelectedEmployees(new Set());
     } else {
-      setSelectedEmployees(new Set(employees.map((e) => e._id)));
+      setSelectedEmployees(new Set(displayedEmployees.map((e) => e._id)));
     }
   };
 
@@ -460,103 +461,141 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
     }
   };
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const displayedEmployees = showUnmarkedOnly
+    ? employees.filter((emp) => {
+        const joiningDate = emp.joiningDate ? new Date(emp.joiningDate) : null;
+        if (joiningDate) {
+          joiningDate.setHours(0, 0, 0, 0);
+        }
+
+        return dates.some((date) => {
+          const targetDate = new Date(date);
+          targetDate.setHours(0, 0, 0, 0);
+
+          const isPastOrToday = targetDate <= today;
+          const isEmployed = !joiningDate || targetDate >= joiningDate;
+
+          if (isPastOrToday && isEmployed) {
+            const dateKey = toDateKey(date);
+            const att = attendanceMap[emp._id]?.[dateKey];
+            return !att;
+          }
+          return false;
+        });
+      })
+    : employees;
+
   if (initialLoading) return <LoadingState message="Loading attendance..." />;
   if (error) return <ErrorState message={error} onRetry={() => fetchAttendance(true)} />;
 
   return (
     <>
       {/* Dynamic Interactive Card Panel */}
-      <div className="bg-white border border-slate-200/70 rounded-2xl p-5 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)] mb-6 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 transition-all">
+      <div className="bg-white border border-slate-200/70 rounded-2xl p-3 shadow-xs mb-6 flex flex-wrap items-center gap-2.5 no-print">
         {/* Week Navigation */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center bg-slate-100/80 border border-slate-200/50 p-1 rounded-xl shadow-inner">
-            <button
-              onClick={() => setWeekOffset((p) => p - 1)}
-              disabled={isPrevWeekDisabled}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition duration-200 shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-              title="Previous Week"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div className="px-4 text-sm font-semibold text-slate-700 min-w-[210px] text-center select-none">
-              {weekLabel}
-            </div>
-            <button
-              onClick={() => setWeekOffset((p) => p + 1)}
-              disabled={weekOffset >= 0}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition duration-200 shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-              title="Next Week"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+        <div className="flex items-center bg-slate-100/80 border border-slate-200/50 p-1 rounded-xl shadow-inner h-10 select-none shrink-0">
+          <button
+            onClick={() => setWeekOffset((p) => p - 1)}
+            disabled={isPrevWeekDisabled}
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition duration-200 shadow-xs disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            title="Previous Week"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="px-3 text-xs font-bold text-slate-700 min-w-[170px] text-center">
+            {weekLabel}
           </div>
-          {weekOffset !== 0 && (
-            <button
-              onClick={() => setWeekOffset(0)}
-              className="px-4 py-2.5 text-xs font-semibold bg-indigo-50 border border-indigo-100 hover:bg-indigo-100/70 text-indigo-700 rounded-xl transition duration-200 cursor-pointer shadow-sm"
-            >
-              Reset to Current Week
-            </button>
-          )}
+          <button
+            onClick={() => setWeekOffset((p) => p + 1)}
+            disabled={weekOffset >= 0}
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition duration-200 shadow-xs disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            title="Next Week"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
 
-        {/* Filters & Actions */}
-        <div className="flex items-center gap-3 flex-wrap flex-1 lg:flex-initial lg:justify-end">
-          {role !== 'employee' && (
-            <div className="relative flex-1 sm:flex-initial">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full sm:w-56 pl-10 pr-4 py-2.5 text-sm border border-slate-200/80 rounded-xl bg-slate-50/50 hover:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium text-slate-700 placeholder-slate-400"
-              />
-            </div>
-          )}
-          {(activeRole === 'admin' || activeRole === 'hr') && (
-            <CustomSelect
-              label="Manager"
-              value={managerFilter}
-              onChange={setManagerFilter}
-              options={[
-                { value: '', label: 'All Managers' },
-                ...managers.map((m) => ({ value: m._id, label: m.name })),
-              ]}
-              maxWidthClass="min-w-[190px]"
+        {weekOffset !== 0 && (
+          <button
+            onClick={() => setWeekOffset(0)}
+            className="px-3 py-2 text-xs font-bold bg-indigo-50 border border-indigo-100 hover:bg-indigo-100/70 text-indigo-700 rounded-xl transition duration-200 cursor-pointer shadow-xs h-10 whitespace-nowrap"
+          >
+            Reset to Current Week
+          </button>
+        )}
+
+        {role !== 'employee' && (
+          <div className="relative min-w-[160px] flex-1 max-w-[240px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all h-10 shadow-xs"
             />
-          )}
-          {(activeRole === 'admin' || activeRole === 'hr') && (
-            <CustomSelect
-              label="Department"
-              value={department}
-              onChange={setDepartment}
-              options={[
-                { value: '', label: 'All Departments' },
-                ...departments.map((d) => ({ value: d, label: d })),
-              ]}
-              maxWidthClass="min-w-[190px]"
+          </div>
+        )}
+
+        {(activeRole === 'admin' || activeRole === 'hr') && (
+          <CustomSelect
+            label="Manager"
+            value={managerFilter}
+            onChange={setManagerFilter}
+            options={[
+              { value: '', label: 'All Managers' },
+              ...managers.map((m) => ({ value: m._id, label: m.name })),
+            ]}
+            maxWidthClass="min-w-[150px]"
+          />
+        )}
+
+        {(activeRole === 'admin' || activeRole === 'hr') && (
+          <CustomSelect
+            label="Department"
+            value={department}
+            onChange={setDepartment}
+            options={[
+              { value: '', label: 'All Departments' },
+              ...departments.map((d) => ({ value: d, label: d })),
+            ]}
+            maxWidthClass="min-w-[150px]"
+          />
+        )}
+
+        {role !== 'employee' && (
+          <label className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-bold text-slate-600 transition select-none h-10 shrink-0 shadow-xs">
+            <input
+              type="checkbox"
+              checked={showUnmarkedOnly}
+              onChange={(e) => setShowUnmarkedOnly(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             />
-          )}
-          {/* Bulk date picker */}
-          {!isReadonly && selectedEmployees.size > 0 && (
-            <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
-              <span className="text-xs font-semibold text-indigo-700 shrink-0">Bulk Date:</span>
-              <input
-                type="date"
-                value={selectedDate || toDateKey(new Date())}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-2 py-1 text-xs border border-indigo-200/60 rounded-lg bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 font-semibold text-slate-700 cursor-pointer"
-              />
-            </div>
-          )}
-        </div>
+            <span>Show Unmarked Only</span>
+          </label>
+        )}
+
+        {/* Bulk date picker */}
+        {!isReadonly && selectedEmployees.size > 0 && (
+          <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-100 rounded-xl px-3 py-1 shadow-xs h-10 shrink-0">
+            <span className="text-xs font-semibold text-indigo-700 shrink-0">Bulk Date:</span>
+            <input
+              type="date"
+              value={selectedDate || toDateKey(new Date())}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-2 py-1 text-xs border border-indigo-200/60 rounded-lg bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 font-semibold text-slate-700 cursor-pointer h-7"
+            />
+          </div>
+        )}
       </div>
 
       {/* Administrative Policy Guide Banner */}
@@ -595,7 +634,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
       })()}
 
       {/* Grid Table */}
-      {employees.length === 0 && !refreshing ? (
+      {displayedEmployees.length === 0 && !refreshing ? (
         <EmptyState title="No employees found" description={isReadonly ? 'No attendance records found.' : 'No employees match your current filters.'} />
       ) : (
         <div className="relative">
@@ -619,7 +658,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                   <th className="px-3 py-3 text-left w-10">
                     <input
                       type="checkbox"
-                      checked={selectedEmployees.size === employees.length && employees.length > 0}
+                      checked={selectedEmployees.size === displayedEmployees.length && displayedEmployees.length > 0}
                       onChange={toggleAllEmployees}
                       className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                     />
@@ -662,7 +701,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {employees.map((emp, empIdx) => (
+              {displayedEmployees.map((emp, empIdx) => (
                 <tr key={emp._id} className={`transition-colors ${selectedEmployees.has(emp._id) ? 'bg-indigo-50/30' : 'hover:bg-slate-50/50'}`}>
                   {/* Checkbox */}
                   {!isReadonly && (
@@ -797,7 +836,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                               onlyOffDay={isFuture}
                               restrictedStatuses={restrictedList}
                               align={i >= 4 ? 'left' : i < 2 ? 'right' : 'center'}
-                              placement={empIdx >= employees.length - 2 ? 'top' : 'bottom'}
+                              placement={empIdx >= displayedEmployees.length - 2 ? 'top' : 'bottom'}
                               employeeGender={emp.genderFlag}
                               wfhRestrictionReason={wfhReason}
                             />

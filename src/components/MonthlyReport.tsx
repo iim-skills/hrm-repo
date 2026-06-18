@@ -10,6 +10,7 @@ import { ATTENDANCE_STATUS_CONFIG } from '@/types';
 import { getCycleBoundsForDate } from '@/lib/cycleUtils';
 import CustomSelect from '@/components/CustomSelect';
 import CalendarGrid, { toDateKey } from '@/components/CalendarGrid';
+import { Printer, Download, ChevronDown } from 'lucide-react';
 
 interface MonthlyReportProps {
   role: Role;
@@ -47,6 +48,8 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
   const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [attendanceList, setAttendanceList] = useState<IAttendance[]>([]);
   const [sandwichFlags, setSandwichFlags] = useState<any[]>([]);
+  const [pslTotalBalances, setPslTotalBalances] = useState<Record<string, Record<string, number>>>({});
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -105,6 +108,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       setDepartments(data.departments);
       setAttendanceList(data.attendance);
       setSandwichFlags(data.sandwichFlags || []);
+      setPslTotalBalances(data.pslTotalBalances || {});
     } catch {
       setError('Failed to load monthly attendance report.');
     } finally {
@@ -115,6 +119,14 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
   useEffect(() => {
     fetchReportData();
   }, [fetchReportData]);
+
+  // Click outside to close Export Dropdown
+  useEffect(() => {
+    if (!showExportDropdown) return;
+    const handleClose = () => setShowExportDropdown(false);
+    document.addEventListener('click', handleClose);
+    return () => document.removeEventListener('click', handleClose);
+  }, [showExportDropdown]);
 
   // Map attendance by employeeId -> dateKey
   const attendanceMap = useMemo(() => {
@@ -147,6 +159,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     let off = 0;
     let lwp = 0;
     let unmarked = 0;
+    let lateCount = 0;
 
     datesInMonth.forEach((date) => {
       const key = toDateKey(date);
@@ -154,6 +167,10 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       if (!record) {
         unmarked++;
         return;
+      }
+
+      if (record.status === 'LATE') {
+        lateCount++;
       }
 
       const effectiveStatus = activeSandwichDates.has(key) ? 'LWP' : record.status;
@@ -195,6 +212,15 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     const actualWorkdays = present + wfh + rcd + (0.5 * hd);
     const attendancePercentage = operatingDays > 0 ? (actualWorkdays / operatingDays) * 100 : 100;
 
+    // Calculate estimated salary deduction days (Est. Salary Deduction)
+    const halfDayDeduction = hd * 0.5;
+    const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
+    const totalLOPAbsences = psl + halfDayDeduction + lwp + lateDeduction;
+    
+    const yearMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+    const totalPslBalance = pslTotalBalances[empId]?.[yearMonthKey] || 0;
+    const salaryDeductionDays = totalLOPAbsences > totalPslBalance ? totalLOPAbsences - totalPslBalance : 0;
+
     return {
       present,
       wfh,
@@ -207,8 +233,9 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       operatingDays,
       actualWorkdays,
       attendancePercentage,
+      salaryDeductionDays,
     };
-  }, [attendanceMap, datesInMonth, sandwichFlags, selectedMonth, selectedYear]);
+  }, [attendanceMap, datesInMonth, sandwichFlags, selectedMonth, selectedYear, pslTotalBalances]);
 
   // Employee report rows
   const reportRows = useMemo(() => {
@@ -291,6 +318,81 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     window.print();
   };
 
+  // CSV Export function for Attendance Statistics
+  const handleExportAttendanceCSV = () => {
+    const headers = ['Employee Name', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'LWP', 'Deductions', 'Attendance %'];
+    const rows = processedRows.map((row) => [
+      row.employee.name,
+      row.employee.department,
+      row.metrics.present,
+      row.metrics.wfh,
+      row.metrics.psl,
+      row.metrics.hd,
+      row.metrics.rcd,
+      row.metrics.off,
+      row.metrics.lwp,
+      row.metrics.salaryDeductionDays.toFixed(2).replace(/\.00$/, ''),
+      row.metrics.attendancePercentage.toFixed(1) + '%',
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+
+    const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label || 'Month';
+    const filename = `attendance_report_${monthLabel.toLowerCase()}_${selectedYear}.csv`;
+
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Export function for Salary Deductions
+  const handleExportCSV = () => {
+    const headers = ['Employee Name', 'Department', 'Est. Salary Deduction Days'];
+    
+    // Sort employees by deduction days descending, with alphabetical name fallback
+    const sortedForExport = [...processedRows].sort((a, b) => {
+      const dedA = a.metrics.salaryDeductionDays;
+      const dedB = b.metrics.salaryDeductionDays;
+      if (dedB !== dedA) {
+        return dedB - dedA;
+      }
+      return a.employee.name.localeCompare(b.employee.name);
+    });
+
+    const rows = sortedForExport.map((row) => [
+      row.employee.name,
+      row.employee.department,
+      row.metrics.salaryDeductionDays.toFixed(2).replace(/\.00$/, ''),
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+
+    const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label || 'Month';
+    const filename = `salary_deductions_${monthLabel.toLowerCase()}_${selectedYear}.csv`;
+
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSort = (type: 'name' | 'percentage') => {
     if (sortBy === type) {
       setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
@@ -354,74 +456,104 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       </div>
 
       {/* Control Toolbar */}
-      <div className="sticky top-0 z-30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/95 backdrop-blur-sm p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 no-print">
-        {/* Month Selection */}
-        <div className="flex items-center gap-3">
-          <CustomSelect
-            label="Month"
-            value={selectedMonth}
-            onChange={(v: number) => setSelectedMonth(v)}
-            options={MONTHS.filter((m) => {
-              if (selectedYear === 2026 && m.value < 4) return false;
-              if (selectedYear > currentCycle.cycleYear) return false;
-              if (selectedYear === currentCycle.cycleYear && m.value > currentCycle.cycleMonth - 1) return false;
-              return true;
-            })}
-          />
+      <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2.5 bg-white/95 backdrop-blur-sm p-3 rounded-2xl border border-slate-200 shadow-xs mb-6 no-print">
+        <CustomSelect
+          label="Month"
+          value={selectedMonth}
+          onChange={(v: number) => setSelectedMonth(v)}
+          options={MONTHS.filter((m) => {
+            if (selectedYear === 2026 && m.value < 4) return false;
+            if (selectedYear > currentCycle.cycleYear) return false;
+            if (selectedYear === currentCycle.cycleYear && m.value > currentCycle.cycleMonth - 1) return false;
+            return true;
+          })}
+        />
 
-          <CustomSelect
-            label="Year"
-            value={selectedYear}
-            onChange={(v: number) => {
-              setSelectedYear(v);
-              if (v === 2026 && selectedMonth < 4) {
-                setSelectedMonth(4);
-              }
-            }}
-            options={YEARS.filter((y) => y <= currentCycle.cycleYear).map((y) => ({ value: y, label: String(y) }))}
-            maxWidthClass="min-w-[100px]"
-          />
+        <CustomSelect
+          label="Year"
+          value={selectedYear}
+          onChange={(v: number) => {
+            setSelectedYear(v);
+            if (v === 2026 && selectedMonth < 4) {
+              setSelectedMonth(4);
+            }
+          }}
+          options={YEARS.filter((y) => y <= currentCycle.cycleYear).map((y) => ({ value: y, label: String(y) }))}
+          maxWidthClass="min-w-[90px]"
+        />
 
-          {/* Premium Active Cycle Date Range Label */}
-          <div className="hidden sm:flex items-center gap-2 bg-indigo-50/50 border border-indigo-100 rounded-xl px-4 py-2 shadow-sm text-xs font-semibold text-indigo-700 select-none transition-all duration-200">
-            <span>📅 Cycle:</span>
-            <span>{activeCycleLabel}</span>
-          </div>
-
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-300 bg-white text-slate-600 rounded-xl text-sm font-semibold transition-all hover:bg-slate-50 hover:text-slate-800 shadow-sm"
-          >
-            <span>🖨️</span>
-            <span>Print Report</span>
-          </button>
+        {/* Premium Active Cycle Date Range Label */}
+        <div className="flex items-center gap-1.5 bg-indigo-50/50 border border-indigo-100 rounded-xl px-3 text-xs font-semibold text-indigo-700 select-none h-10 whitespace-nowrap">
+          <span>📅</span>
+          <span>{activeCycleLabel}</span>
         </div>
 
-        {/* Filters bar */}
         {!isEmployeeSelf && (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all w-52 shadow-sm"
-              />
-            </div>
+          <CustomSelect
+            label="Department"
+            value={department}
+            onChange={setDepartment}
+            options={[
+              { value: '', label: 'All Departments' },
+              ...departments.map((d) => ({ value: d, label: d })),
+            ]}
+            maxWidthClass="min-w-[150px]"
+          />
+        )}
 
-            <CustomSelect
-              label="Department"
-              value={department}
-              onChange={setDepartment}
-              options={[
-                { value: '', label: 'All Departments' },
-                ...departments.map((d) => ({ value: d, label: d })),
-              ]}
-              maxWidthClass="min-w-[180px]"
+        {!isEmployeeSelf && (
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExportDropdown(!showExportDropdown);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer h-10 whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showExportDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showExportDropdown && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-md py-1 z-40 animate-fadeIn">
+                <button
+                  onClick={() => {
+                    handleExportAttendanceCSV();
+                    setShowExportDropdown(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition cursor-pointer"
+                >
+                  📄 Export Attendance
+                </button>
+                
+                {(role === 'admin' || role === 'hr') && (
+                  <button
+                    onClick={() => {
+                      handleExportCSV();
+                      setShowExportDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 border-t border-slate-100 transition cursor-pointer"
+                  >
+                    ⚖️ Export Deductions
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isEmployeeSelf && (
+          <div className="relative flex-1 min-w-[160px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all w-full h-10 shadow-xs"
             />
           </div>
         )}
@@ -569,6 +701,9 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50/20">
                     LWP
                   </th>
+                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
+                    Deductions
+                  </th>
                   <th
                     onClick={() => handleSort('percentage')}
                     className="px-5 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100/50 transition-colors"
@@ -583,7 +718,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
               <tbody className="divide-y divide-slate-100">
                 {processedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-10 text-sm text-slate-400">
+                    <td colSpan={12} className="text-center py-10 text-sm text-slate-400">
                       No matching employee report data found.
                     </td>
                   </tr>
@@ -630,6 +765,13 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-amber-600 bg-amber-50/5">
                         {row.metrics.lwp}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
+                        {row.metrics.salaryDeductionDays > 0 ? (
+                          <span className="text-rose-600 font-bold">-{row.metrics.salaryDeductionDays.toFixed(2).replace(/\.00$/, '')} d</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-center">
                         <span className={`inline-flex items-center px-2 py-1 text-xs font-bold rounded-lg ${row.metrics.attendancePercentage >= 90
