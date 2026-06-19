@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import LoadingState from '@/components/LoadingState';
 import ErrorState from '@/components/ErrorState';
+import { useAuth } from '@/context/AuthContext';
+import PSLExclusionModal from '@/components/PSLExclusionModal';
 
 interface EmployeeBalance {
   employeeId: string;
@@ -16,6 +18,8 @@ interface EmployeeBalance {
 }
 
 export default function LeaveCarryForwardPage() {
+  const { user } = useAuth();
+  const [showExclusionModal, setShowExclusionModal] = useState(false);
   const [employees, setEmployees] = useState<EmployeeBalance[]>([]);
   const [updates, setUpdates] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -176,6 +180,18 @@ export default function LeaveCarryForwardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {user?.role === 'hr' && (
+            <button
+              onClick={() => setShowExclusionModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-sm font-bold rounded-xl shadow-md cursor-pointer transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              PSL Exclusions
+            </button>
+          )}
           <Link href="/hr/report">
             <span className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-xl shadow-xs cursor-pointer transition">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -376,6 +392,13 @@ export default function LeaveCarryForwardPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {showExclusionModal && (
+        <PSLExclusionModal
+          onClose={() => setShowExclusionModal(false)}
+          onSuccess={() => fetchBalances(year, month)}
+        />
       )}
     </div>
   );

@@ -8,6 +8,7 @@ import Employee from './models/Employee';
 import EmployeeTier from './models/EmployeeTier';
 import TierHistory from './models/TierHistory';
 import FrozenMonthlySummary from './models/FrozenMonthlySummary';
+import PSLExclusion from './models/PSLExclusion';
 import { generateMonthlySummary, calculateLeaveBalance } from './automation';
 import { getCycleBoundsForDate, getCycleBounds } from './cycleUtils';
 
@@ -41,7 +42,8 @@ export async function checkPSLOverflow(
   const priorRecord = await calculateLeaveBalance(empId, priorYear, priorMonth);
 
   const carriedForward = priorRecord ? priorRecord.balance : 0.0;
-  const allocated = 1.0; // Rule: 1 PSL accrued monthly
+  const isExcluded = await PSLExclusion.exists({ employeeId: empId });
+  const allocated = isExcluded ? 0.0 : 1.0;
 
   // Count existing PAID_SICK_LEAVE and HALF_DAY records in the current month
   const startDate = new Date(Date.UTC(year, month, 1));

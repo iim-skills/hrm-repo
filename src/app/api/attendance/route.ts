@@ -10,6 +10,7 @@ import WFHRestriction from '@/lib/models/WFHRestriction';
 import ComplianceAlert from '@/lib/models/ComplianceAlert';
 import LeaveBalance from '@/lib/models/LeaveBalance';
 import SandwichFlag from '@/lib/models/SandwichFlag';
+import PSLExclusion from '@/lib/models/PSLExclusion';
 import { generateMonthlySummary, calculateLeaveBalance } from '@/lib/automation';
 import { toCycleKey, getCycleBounds, getCycleBoundsForDate } from '@/lib/cycleUtils';
 
@@ -239,20 +240,27 @@ export async function GET(request: NextRequest) {
       return { year: py, month: pm };
     });
 
-    // Query all prior balances in a single query!
-    const priorBalances = await LeaveBalance.find({
+    // Query all balances in the range in a single query!
+    const priorAndCurrentBalances = await LeaveBalance.find({
       employeeId: { $in: employeeIds },
-      $or: priorMonths.map(({ year, month }) => ({ year, month }))
+      $or: [...priorMonths, ...uniqueMonths].map(({ year, month }) => ({ year, month }))
     }).lean();
 
-    // Map: employeeId -> year-month -> prior month's balance
-    const priorBalanceMap: Record<string, Record<string, number>> = {};
-    for (const bal of priorBalances) {
+    // Map: employeeId -> year-month -> balance details
+    const balanceDetailsMap: Record<string, Record<string, { balance: number; allocated: number }>> = {};
+    for (const bal of priorAndCurrentBalances) {
       const empId = bal.employeeId.toString();
       const key = `${bal.year}-${bal.month}`;
-      if (!priorBalanceMap[empId]) priorBalanceMap[empId] = {};
-      priorBalanceMap[empId][key] = bal.balance;
+      if (!balanceDetailsMap[empId]) balanceDetailsMap[empId] = {};
+      balanceDetailsMap[empId][key] = {
+        balance: bal.balance,
+        allocated: bal.allocated !== undefined ? bal.allocated : 1.0
+      };
     }
+
+    // Query active exclusions for displayed employees
+    const exclusions = await PSLExclusion.find({ employeeId: { $in: employeeIds } }).lean();
+    const excludedSet = new Set(exclusions.map(ex => ex.employeeId.toString()));
 
     // Map: employeeId -> year-month -> pslUsed in that custom cycle
     const pslUsedMap: Record<string, Record<string, number>> = {};
@@ -296,14 +304,28 @@ export async function GET(request: NextRequest) {
 
         // Get prior month balance from pre-fetched map, with dynamic database fallback just in case
         let carriedForward = 0.0;
-        if (priorBalanceMap[empId]?.[priorKey] !== undefined) {
-          carriedForward = priorBalanceMap[empId][priorKey];
+        if (balanceDetailsMap[empId]?.[priorKey] !== undefined) {
+          carriedForward = balanceDetailsMap[empId][priorKey].balance;
         } else {
           const priorRecord = await calculateLeaveBalance(emp._id, priorYear, priorMonth);
           carriedForward = priorRecord ? priorRecord.balance : 0.0;
         }
 
-        const allocated = 1.0;
+        // Determine if this is a past month (before the current calendar month)
+        const now = new Date();
+        const currentYear = now.getUTCFullYear();
+        const currentMonth = now.getUTCMonth(); // 0-indexed
+        const isPastMonth = year < currentYear || (year === currentYear && month < currentMonth);
+
+        let allocated = 1.0;
+        if (isPastMonth) {
+          if (balanceDetailsMap[empId]?.[`${year}-${month}`] !== undefined) {
+            allocated = balanceDetailsMap[empId][`${year}-${month}`].allocated;
+          }
+        } else {
+          allocated = excludedSet.has(empId) ? 0.0 : 1.0;
+        }
+
         const pslUsedKey = `${year}-${month}`;
         const pslUsed = pslUsedMap[empId]?.[pslUsedKey] || 0.0;
         const availableBalance = Math.max(0, carriedForward + allocated - pslUsed);
@@ -549,6 +571,81 @@ export async function POST(request: NextRequest) {
               }, { status: 400 });
             }
           }
+        }
+      }
+    }
+
+    // WFH vs Half-Day/PSL conflict validation: Block Half-Day/PSL if WFH has already been taken in the same calendar week
+    for (const record of records) {
+      if (record.status === 'HALF_DAY' || record.status === 'PAID_SICK_LEAVE') {
+        const emp = employeeMap.get(record.employeeId);
+        if (!emp) {
+          return NextResponse.json({ error: `Employee not found: ${record.employeeId}` }, { status: 404 });
+        }
+
+        const attendanceDate = new Date(record.date);
+        attendanceDate.setUTCHours(0, 0, 0, 0);
+
+        // Determine calendar week boundaries (Monday to Sunday) for the date in UTC
+        const dow = attendanceDate.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+        const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+        const startOfWeek = new Date(attendanceDate);
+        startOfWeek.setUTCDate(startOfWeek.getUTCDate() - daysSinceMonday);
+        startOfWeek.setUTCHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setUTCDate(endOfWeek.getUTCDate() + 6);
+        endOfWeek.setUTCHours(23, 59, 59, 999);
+
+        // Find existing WFH records in DB in this calendar week
+        const existingWfh = await Attendance.find({
+          employeeId: record.employeeId,
+          date: { $gte: startOfWeek, $lte: endOfWeek },
+          status: 'WFH'
+        }).lean();
+
+        // Check the current request batch for WFH updates for this employee
+        const empIdStr = record.employeeId.toString();
+        const batchWfhDates = new Set<string>();
+        const batchNonWfhDates = new Set<string>();
+
+        for (const r of records) {
+          if (r.employeeId.toString() === empIdStr) {
+            const rDate = new Date(r.date);
+            rDate.setUTCHours(0, 0, 0, 0);
+            const rDateStr = rDate.toISOString().split('T')[0];
+            if (r.status === 'WFH') {
+              batchWfhDates.add(rDateStr);
+            } else {
+              batchNonWfhDates.add(rDateStr);
+            }
+          }
+        }
+
+        let hasActiveWfh = false;
+        for (const w of existingWfh) {
+          const wDateStr = new Date(w.date).toISOString().split('T')[0];
+          if (!batchNonWfhDates.has(wDateStr)) {
+            hasActiveWfh = true;
+            break;
+          }
+        }
+
+        if (!hasActiveWfh) {
+          for (const wDateStr of batchWfhDates) {
+            const wDate = new Date(wDateStr);
+            if (wDate >= startOfWeek && wDate <= endOfWeek) {
+              hasActiveWfh = true;
+              break;
+            }
+          }
+        }
+
+        if (hasActiveWfh) {
+          const typeLabel = record.status === 'HALF_DAY' ? 'Half-Day' : 'Sick Leave';
+          return NextResponse.json({
+            error: `Cannot mark ${typeLabel} for ${emp.name} on ${record.date.split('T')[0]}. WFH has already been taken in this calendar week.`
+          }, { status: 400 });
         }
       }
     }

@@ -4,6 +4,7 @@ import Attendance from '@/lib/models/Attendance';
 import MonthlyAttendanceSummary from '@/lib/models/MonthlyAttendanceSummary';
 import LeaveBalance from '@/lib/models/LeaveBalance';
 import SandwichFlag from '@/lib/models/SandwichFlag';
+import PSLExclusion from '@/lib/models/PSLExclusion';
 import { getCycleBounds } from './cycleUtils';
 
 /**
@@ -242,8 +243,25 @@ export async function calculateLeaveBalance(
     }
   }
 
+  // Determine if this is a past month (before the current calendar month)
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth(); // 0-indexed
+  const isPastMonth = calcYear < currentYear || (calcYear === currentYear && calcMonth < currentMonth);
+
   // Standard allocation: 1.0 PSL days added per month (Sick Leave Policy Engine rule)
-  const allocated = 1.0;
+  let allocated = 1.0;
+  if (isPastMonth) {
+    // For past months, preserve whatever was previously allocated (or default to 1.0)
+    const existingRecord = await LeaveBalance.findOne({ employeeId: empId, year: calcYear, month: calcMonth }).lean();
+    if (existingRecord && existingRecord.allocated !== undefined) {
+      allocated = existingRecord.allocated;
+    }
+  } else {
+    // For current and future months, respect the exclusion setting
+    const isExcluded = await PSLExclusion.exists({ employeeId: empId });
+    allocated = isExcluded ? 0.0 : 1.0;
+  }
 
   // Calculate final balance for the month
   const balance = Math.max(0, parseFloat((carriedForward + allocated - used).toFixed(2)));
