@@ -650,6 +650,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Roster Off (SCHEDULE_OFF) limit validation: Block if more than 1 Roster Off is taken in the same calendar week
+    for (const record of records) {
+      if (record.status === 'SCHEDULE_OFF') {
+        const emp = employeeMap.get(record.employeeId);
+        if (!emp) {
+          return NextResponse.json({ error: `Employee not found: ${record.employeeId}` }, { status: 404 });
+        }
+
+        const attendanceDate = new Date(record.date);
+        attendanceDate.setUTCHours(0, 0, 0, 0);
+
+        // Determine calendar week boundaries (Monday to Sunday) for the date in UTC
+        const dow = attendanceDate.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+        const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+        const startOfWeek = new Date(attendanceDate);
+        startOfWeek.setUTCDate(startOfWeek.getUTCDate() - daysSinceMonday);
+        startOfWeek.setUTCHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setUTCDate(endOfWeek.getUTCDate() + 6);
+        endOfWeek.setUTCHours(23, 59, 59, 999);
+
+        // Find existing SCHEDULE_OFF records in DB in this calendar week
+        const existingOffs = await Attendance.find({
+          employeeId: record.employeeId,
+          date: { $gte: startOfWeek, $lte: endOfWeek },
+          status: 'SCHEDULE_OFF'
+        }).lean();
+
+        // Check the current request batch for SCHEDULE_OFF updates for this employee
+        const empIdStr = record.employeeId.toString();
+        const batchOffDates = new Set<string>();
+        const batchNonOffDates = new Set<string>();
+
+        for (const r of records) {
+          if (r.employeeId.toString() === empIdStr) {
+            const rDate = new Date(r.date);
+            rDate.setUTCHours(0, 0, 0, 0);
+            const rDateStr = rDate.toISOString().split('T')[0];
+            if (r.status === 'SCHEDULE_OFF') {
+              batchOffDates.add(rDateStr);
+            } else {
+              batchNonOffDates.add(rDateStr);
+            }
+          }
+        }
+
+        // Count unique SCHEDULE_OFF dates in this week
+        const uniqueOffDates = new Set<string>();
+
+        // Add existing DB records that are not being overridden by a non-off status in the batch
+        for (const off of existingOffs) {
+          const offDateStr = new Date(off.date).toISOString().split('T')[0];
+          if (!batchNonOffDates.has(offDateStr)) {
+            uniqueOffDates.add(offDateStr);
+          }
+        }
+
+        // Add batch records that are set to SCHEDULE_OFF
+        for (const offDateStr of batchOffDates) {
+          const offDate = new Date(offDateStr);
+          if (offDate >= startOfWeek && offDate <= endOfWeek) {
+            uniqueOffDates.add(offDateStr);
+          }
+        }
+
+        if (uniqueOffDates.size > 1) {
+          return NextResponse.json({
+            error: `Cannot mark Roster Off for ${emp.name} on ${record.date.split('T')[0]}. Employees cannot have more than 1 Roster Off in a calendar week.`
+          }, { status: 400 });
+        }
+      }
+    }
+
     // Upsert attendance records (prevents duplicates)
     const results = [];
     const errors = [];
