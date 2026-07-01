@@ -238,7 +238,7 @@ export async function calculateLeaveBalance(
       (priorYear === earliestYear && priorMonth >= earliestMonth);
 
     if (isAfterOrAtEarliest) {
-      const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, forceRecalculate);
+      const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, false);
       carriedForward = priorBalanceRecord ? priorBalanceRecord.balance : 0.0;
     }
   }

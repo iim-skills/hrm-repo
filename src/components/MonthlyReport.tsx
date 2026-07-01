@@ -49,6 +49,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
   const [attendanceList, setAttendanceList] = useState<IAttendance[]>([]);
   const [sandwichFlags, setSandwichFlags] = useState<any[]>([]);
   const [pslTotalBalances, setPslTotalBalances] = useState<Record<string, Record<string, number>>>({});
+  const [salaryDeductions, setSalaryDeductions] = useState<Record<string, number>>({});
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -98,6 +99,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
         startDate: firstDay,
         endDate: lastDay,
         limit: '1000', // Fetch all employees for reporting
+        calcDeductions: 'true',
       });
 
       const res = await fetch(`/api/attendance?${params}`);
@@ -109,6 +111,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       setAttendanceList(data.attendance);
       setSandwichFlags(data.sandwichFlags || []);
       setPslTotalBalances(data.pslTotalBalances || {});
+      setSalaryDeductions(data.salaryDeductions || {});
     } catch {
       setError('Failed to load monthly attendance report.');
     } finally {
@@ -219,7 +222,8 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     
     const yearMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
     const totalPslBalance = pslTotalBalances[empId]?.[yearMonthKey] || 0;
-    const salaryDeductionDays = totalLOPAbsences > totalPslBalance ? totalLOPAbsences - totalPslBalance : 0;
+    const fallbackDeduction = totalLOPAbsences > totalPslBalance ? totalLOPAbsences - totalPslBalance : 0;
+    const salaryDeductionDays = salaryDeductions[empId] !== undefined ? salaryDeductions[empId] : fallbackDeduction;
 
     return {
       present,
@@ -235,7 +239,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       attendancePercentage,
       salaryDeductionDays,
     };
-  }, [attendanceMap, datesInMonth, sandwichFlags, selectedMonth, selectedYear, pslTotalBalances]);
+  }, [attendanceMap, datesInMonth, sandwichFlags, selectedMonth, selectedYear, pslTotalBalances, salaryDeductions]);
 
   // Employee report rows
   const reportRows = useMemo(() => {

@@ -9,6 +9,7 @@ import { checkPSLOverflow, checkWFHRestriction, runSandwichCheck, runWFHRestrict
 import WFHRestriction from '@/lib/models/WFHRestriction';
 import ComplianceAlert from '@/lib/models/ComplianceAlert';
 import LeaveBalance from '@/lib/models/LeaveBalance';
+import MonthlyAttendanceSummary from '@/lib/models/MonthlyAttendanceSummary';
 import SandwichFlag from '@/lib/models/SandwichFlag';
 import PSLExclusion from '@/lib/models/PSLExclusion';
 import { generateMonthlySummary, calculateLeaveBalance } from '@/lib/automation';
@@ -344,6 +345,74 @@ export async function GET(request: NextRequest) {
       isOverridden: false
     }).lean();
 
+    const calcDeductions = searchParams.get('calcDeductions');
+    const salaryDeductions: Record<string, number> = {};
+
+    if (calcDeductions === 'true') {
+      const endObj = new Date(endDate);
+      const endCycle = getCycleBoundsForDate(endObj);
+      const cycleYear = endCycle.cycleYear;
+      const cycleMonth = endCycle.cycleMonth - 1; // 0-indexed month
+
+      // Batch query all leave balances and summaries for the selected year and month
+      const currentBalances = await LeaveBalance.find({
+        employeeId: { $in: employeeIds },
+        year: cycleYear,
+        month: cycleMonth
+      }).lean();
+
+      const currentSummaries = await MonthlyAttendanceSummary.find({
+        employeeId: { $in: employeeIds },
+        year: cycleYear,
+        month: cycleMonth
+      }).lean();
+
+      const balanceMap: Record<string, any> = {};
+      for (const bal of currentBalances) {
+        balanceMap[bal.employeeId.toString()] = bal;
+      }
+
+      const summaryMap: Record<string, any> = {};
+      for (const sum of currentSummaries) {
+        summaryMap[sum.employeeId.toString()] = sum;
+      }
+
+      for (const emp of employees) {
+        const empId = emp._id.toString();
+        
+        let summary = summaryMap[empId];
+        let balance = balanceMap[empId];
+
+        // Fallback to dynamic computation if records are missing
+        if (!summary) {
+          summary = await generateMonthlySummary(emp._id, cycleYear, cycleMonth);
+        }
+        if (!balance) {
+          balance = await calculateLeaveBalance(emp._id, cycleYear, cycleMonth, false);
+        }
+
+        // Filter populated attendanceRecords for that employee
+        const empRecords = attendanceRecords.filter((rec: any) => {
+          const recEmpId = rec.employeeId?._id?.toString() || rec.employeeId?.toString() || '';
+          return recEmpId === empId;
+        });
+
+        const lateCount = empRecords.filter((rec: any) => rec.status === 'LATE').length;
+        const plannedLeaveCount = empRecords.filter((rec: any) => rec.status === 'PLANNED_LEAVE').length;
+
+        const totalPslBalance = (balance?.carriedForward || 0) + (balance?.allocated || 0);
+        const halfDayDeduction = (summary?.halfDayCount || 0) * 0.5;
+        const pslTaken = summary?.pslCount || 0;
+        const baseLwpTaken = summary?.lwpCount || 0;
+        const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
+
+        const totalLOPAbsences = pslTaken + halfDayDeduction + baseLwpTaken + lateDeduction + plannedLeaveCount;
+        const salaryDeductionDays = totalLOPAbsences > totalPslBalance ? totalLOPAbsences - totalPslBalance : 0;
+
+        salaryDeductions[empId] = salaryDeductionDays;
+      }
+    }
+
     return NextResponse.json({
       employees,
       attendance,
@@ -355,7 +424,8 @@ export async function GET(request: NextRequest) {
       pslBalances,
       pslTotalBalances,
       sandwichFlags,
-      rcdDates
+      rcdDates,
+      salaryDeductions
     });
   } catch (error) {
     console.error('Get attendance error:', error);
