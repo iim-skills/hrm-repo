@@ -248,14 +248,15 @@ export async function GET(request: NextRequest) {
     }).lean();
 
     // Map: employeeId -> year-month -> balance details
-    const balanceDetailsMap: Record<string, Record<string, { balance: number; allocated: number }>> = {};
+    const balanceDetailsMap: Record<string, Record<string, { balance: number; allocated: number; carriedForward: number }>> = {};
     for (const bal of priorAndCurrentBalances) {
       const empId = bal.employeeId.toString();
       const key = `${bal.year}-${bal.month}`;
       if (!balanceDetailsMap[empId]) balanceDetailsMap[empId] = {};
       balanceDetailsMap[empId][key] = {
         balance: bal.balance,
-        allocated: bal.allocated !== undefined ? bal.allocated : 1.0
+        allocated: bal.allocated !== undefined ? bal.allocated : 1.0,
+        carriedForward: bal.carriedForward !== undefined ? bal.carriedForward : 0.0
       };
     }
 
@@ -305,7 +306,10 @@ export async function GET(request: NextRequest) {
 
         // Get prior month balance from pre-fetched map, with dynamic database fallback just in case
         let carriedForward = 0.0;
-        if (balanceDetailsMap[empId]?.[priorKey] !== undefined) {
+        const currentKey = `${year}-${month}`;
+        if (balanceDetailsMap[empId]?.[currentKey] !== undefined) {
+          carriedForward = balanceDetailsMap[empId][currentKey].carriedForward;
+        } else if (balanceDetailsMap[empId]?.[priorKey] !== undefined) {
           carriedForward = balanceDetailsMap[empId][priorKey].balance;
         } else {
           const priorRecord = await calculateLeaveBalance(emp._id, priorYear, priorMonth);

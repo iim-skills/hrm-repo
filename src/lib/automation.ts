@@ -174,8 +174,20 @@ export async function calculateLeaveBalance(
 
   // 1. Get the used PSL from the monthly attendance summary
   const summary = await generateMonthlySummary(empId, calcYear, calcMonth);
-  // Rule: 1 full sick leave uses 1.0 PSL, 1 half-day uses 0.5 PSL
-  const used = summary.pslCount + 0.5 * summary.halfDayCount;
+
+  // Define date bounds for the custom cycle to count late arrivals
+  const { startDate, endDate } = getCycleBounds(calcYear, calcMonth + 1);
+  const lateCount = await Attendance.countDocuments({
+    employeeId: empId,
+    date: { $gte: startDate, $lte: endDate },
+    status: 'LATE'
+  });
+
+  const halfDayDeduction = summary.halfDayCount * 0.5;
+  const lateDeduction = lateCount > 2 ? (lateCount - 2) * 0.25 : 0;
+  
+  // Total used PSL includes Paid Sick Leave, Half Day, LWP, Late, and Planned Leave
+  const used = summary.pslCount + halfDayDeduction + summary.lwpCount + lateDeduction + summary.plannedLeaveCount;
 
   // 2. Fetch the prior month's balance to carry forward
   let priorYear = calcYear;
@@ -238,7 +250,7 @@ export async function calculateLeaveBalance(
       (priorYear === earliestYear && priorMonth >= earliestMonth);
 
     if (isAfterOrAtEarliest) {
-      const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, false);
+      const priorBalanceRecord = await calculateLeaveBalance(empId, priorYear, priorMonth, forceRecalculate);
       carriedForward = priorBalanceRecord ? priorBalanceRecord.balance : 0.0;
     }
   }

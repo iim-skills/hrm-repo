@@ -51,6 +51,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
   const [pslTotalBalances, setPslTotalBalances] = useState<Record<string, Record<string, number>>>({});
   const [salaryDeductions, setSalaryDeductions] = useState<Record<string, number>>({});
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showJoinedThisMonth, setShowJoinedThisMonth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -160,6 +161,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     let hd = 0;
     let psl = 0;
     let off = 0;
+    let rh = 0;
     let lwp = 0;
     let unmarked = 0;
     let lateCount = 0;
@@ -188,6 +190,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
         case 'HALF_DAY': hd++; break;
         case 'PAID_SICK_LEAVE': psl++; break;
         case 'SCHEDULE_OFF': off++; break;
+        case 'RESTRICTED_HOLIDAY': rh++; break;
         case 'LWP':
         case 'PLANNED_LEAVE':
           lwp++;
@@ -208,12 +211,22 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
           checkDate.setHours(0, 0, 0, 0);
           return checkDate <= today;
         }).length;
+        // Only count off days and restricted holidays that have elapsed so far
+        const elapsedOff = datesInMonth.slice(0, elapsedDays).filter((d) => {
+          const key = toDateKey(d);
+          const status = records[key]?.status;
+          return status === 'SCHEDULE_OFF' || status === 'RESTRICTED_HOLIDAY';
+        }).length;
+        return elapsedDays - elapsedOff;
       }
-      return elapsedDays - off;
+      return elapsedDays - off - rh;
     })();
 
     const actualWorkdays = present + wfh + rcd + (0.5 * hd);
     const attendancePercentage = operatingDays > 0 ? (actualWorkdays / operatingDays) * 100 : 100;
+
+    // Total Working Days for display includes Roster Off and Restricted Holiday
+    const totalWorkingDaysDisplay = actualWorkdays + off + rh;
 
     // Calculate estimated salary deduction days (Est. Salary Deduction)
     const halfDayDeduction = hd * 0.5;
@@ -232,10 +245,13 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       hd,
       psl,
       off,
+      rh,
       lwp,
       unmarked,
       operatingDays,
       actualWorkdays,
+      totalWorkingDaysDisplay,
+      lateDeduction,
       attendancePercentage,
       salaryDeductionDays,
     };
@@ -270,6 +286,15 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       result = result.filter((row) => row.employee.department === department);
     }
 
+    // Filter by "Joined this month"
+    if (!isEmployeeSelf && showJoinedThisMonth) {
+      result = result.filter((row) => {
+        if (!row.employee.joiningDate) return false;
+        const joinDate = new Date(row.employee.joiningDate);
+        return joinDate.getMonth() === selectedMonth && joinDate.getFullYear() === selectedYear;
+      });
+    }
+
     // Sort rows
     result = [...result].sort((a, b) => {
       if (sortBy === 'name') {
@@ -284,7 +309,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
     });
 
     return result;
-  }, [reportRows, search, department, sortBy, sortOrder, isEmployeeSelf]);
+  }, [reportRows, search, department, sortBy, sortOrder, isEmployeeSelf, showJoinedThisMonth, selectedMonth, selectedYear]);
 
   // Aggregate Metrics for top cards
   const aggregateMetrics = useMemo(() => {
@@ -324,7 +349,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
 
   // CSV Export function for Attendance Statistics
   const handleExportAttendanceCSV = () => {
-    const headers = ['Employee Name', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'LWP', 'Deductions', 'Attendance %'];
+    const headers = ['Employee Name', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'RH', 'LWP', 'Total Working Days', 'Late Deduction', 'Deductions', 'Attendance %'];
     const rows = processedRows.map((row) => [
       row.employee.name,
       row.employee.department,
@@ -334,7 +359,10 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
       row.metrics.hd,
       row.metrics.rcd,
       row.metrics.off,
+      row.metrics.rh,
       row.metrics.lwp,
+      row.metrics.totalWorkingDaysDisplay.toFixed(2).replace(/\.00$/, ''),
+      row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, ''),
       row.metrics.salaryDeductionDays.toFixed(2).replace(/\.00$/, ''),
       row.metrics.attendancePercentage.toFixed(1) + '%',
     ]);
@@ -503,6 +531,20 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
             ]}
             maxWidthClass="min-w-[150px]"
           />
+        )}
+
+        {!isEmployeeSelf && (
+          <button
+            onClick={() => setShowJoinedThisMonth(!showJoinedThisMonth)}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer h-10 whitespace-nowrap select-none ${
+              showJoinedThisMonth
+                ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <span>✨</span>
+            <span>Joined This Month</span>
+          </button>
         )}
 
         {!isEmployeeSelf && (
@@ -702,8 +744,17 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-400 bg-slate-50/20">
                     OFF
                   </th>
+                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-teal-600 bg-teal-50/20">
+                    RH
+                  </th>
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50/20">
                     LWP
+                  </th>
+                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-600 bg-slate-50/20">
+                    Total Working Days
+                  </th>
+                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
+                    Late Deduction
                   </th>
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
                     Deductions
@@ -722,7 +773,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
               <tbody className="divide-y divide-slate-100">
                 {processedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-10 text-sm text-slate-400">
+                    <td colSpan={15} className="text-center py-10 text-sm text-slate-400">
                       No matching employee report data found.
                     </td>
                   </tr>
@@ -767,8 +818,21 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                       <td className="px-3 py-3 text-center text-sm font-semibold text-slate-400 bg-slate-50/5">
                         {row.metrics.off}
                       </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-teal-600 bg-teal-50/5">
+                        {row.metrics.rh}
+                      </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-amber-600 bg-amber-50/5">
                         {row.metrics.lwp}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700 bg-slate-50/5">
+                        {row.metrics.totalWorkingDaysDisplay.toFixed(2).replace(/\.00$/, '')}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
+                        {row.metrics.lateDeduction > 0 ? (
+                          <span className="text-rose-600 font-bold">-{row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, '')} d</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
                         {row.metrics.salaryDeductionDays > 0 ? (
