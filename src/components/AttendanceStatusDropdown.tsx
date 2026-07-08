@@ -7,7 +7,7 @@ import { ATTENDANCE_STATUS_CONFIG } from '@/types';
 
 interface AttendanceStatusDropdownProps {
   value: AttendanceStatus | '';
-  onChange: (status: AttendanceStatus) => void;
+  onChange: (status: AttendanceStatus | '') => void;
   disabled?: boolean;
   compact?: boolean;
   onlyOffDay?: boolean;
@@ -125,6 +125,23 @@ export default function AttendanceStatusDropdown({
             Choose Status
           </div>
           <div className="space-y-0.5">
+            {value && (
+              <div className="mb-1 pb-1 border-b border-slate-100/80">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange('');
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between text-left px-2 py-1.5 text-xs font-semibold rounded-xl transition duration-150 cursor-pointer text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <span>Unmark</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black shadow-sm bg-slate-100 text-slate-500 border border-slate-200/40">
+                    CLEAR
+                  </span>
+                </button>
+              </div>
+            )}
             {(() => {
               const renderStatusButton = (status: AttendanceStatus) => {
                 const itemConfig = ATTENDANCE_STATUS_CONFIG[status];

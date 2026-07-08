@@ -35,7 +35,7 @@ interface AttendanceRecord {
   date: string;
   status: string;
   notes?: string;
-  markedByName?: string;
+  markedBy?: string;
   createdAt?: string;
   history?: Array<{
     status: string;
@@ -143,6 +143,15 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
     target.setHours(0, 0, 0, 0);
     now.setHours(0, 0, 0, 0);
 
+    // Block editing if date is before employee joining date
+    if (employee && employee.joiningDate) {
+      const joining = new Date(employee.joiningDate);
+      joining.setHours(0, 0, 0, 0);
+      if (target < joining) {
+        return false;
+      }
+    }
+
     const isFuture = target > now;
     if (isFuture) {
       return true;
@@ -177,7 +186,7 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
   }, [selectedDayDetail, isFutureDay]);
 
   const handleSaveAttendance = async () => {
-    if (!selectedDayDetail || !employee || !editStatus) return;
+    if (!selectedDayDetail || !employee || editStatus === undefined) return;
 
     try {
       setIsSaving(true);
@@ -202,12 +211,12 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
       }
 
       // Proactively update local state for fast visual response
-      const updatedRecord: AttendanceRecord = {
+      const updatedRecord: AttendanceRecord | null = editStatus === '' ? null : {
         _id: selectedDayDetail.record?._id || '',
         date: dateStr,
         status: editStatus,
         notes: editNotes,
-        markedByName: user?.name || user?.email || 'Admin/HR',
+        markedBy: user?.name || user?.email || 'Admin/HR',
         createdAt: selectedDayDetail.record?.createdAt || new Date().toISOString()
       };
       setSelectedDayDetail({
@@ -359,6 +368,27 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Choose Status</label>
                     <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs custom-scrollbar">
+                      {selectedDayDetail.record && (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() => setEditStatus('')}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-1.5 ${editStatus === ''
+                            ? 'border-slate-400 bg-slate-100 text-slate-800 shadow-xs transform scale-[1.01]'
+                            : 'border-slate-100 bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50/50'
+                            }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {editStatus === '' && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-pulse shrink-0" />
+                            )}
+                            Unmark / Clear Attendance
+                          </span>
+                          <span className="px-1.5 py-0.5 text-[9px] font-black rounded border shrink-0 bg-slate-100 text-slate-500 border-slate-200">
+                            CLEAR
+                          </span>
+                        </button>
+                      )}
                       {(Object.keys(ATTENDANCE_STATUS_CONFIG) as AttendanceStatus[])
                         .filter((status) => {
                           if (isFutureDay) {
@@ -440,22 +470,29 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
                     </button>
                   </div>
 
-                  {selectedDayDetail.record && (
-                    <div className="border-t border-slate-200/40 pt-3.5 mt-2.5 space-y-2">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 font-bold uppercase tracking-wider">Marked By:</span>
-                        <span className="font-semibold text-slate-700 truncate max-w-[140px]" title={selectedDayDetail.record.markedByName}>
-                          {selectedDayDetail.record.markedByName || 'System'}
-                        </span>
+                  {selectedDayDetail.record && (() => {
+                    const firstLog = selectedDayDetail.record.history && selectedDayDetail.record.history.length > 0
+                      ? selectedDayDetail.record.history[0]
+                      : null;
+                    const originalMarker = firstLog?.updatedByName || selectedDayDetail.record.markedBy || 'System';
+                    const originalDate = firstLog?.updatedAt || selectedDayDetail.record.createdAt;
+                    return (
+                      <div className="border-t border-slate-200/40 pt-3.5 mt-2.5 space-y-2">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400 font-bold uppercase tracking-wider">Marked By:</span>
+                          <span className="font-semibold text-slate-700 truncate max-w-[140px]" title={originalMarker}>
+                            {originalMarker}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400 font-bold uppercase tracking-wider">Registered At:</span>
+                          <span className="text-slate-500">
+                            {originalDate ? new Date(originalDate).toLocaleDateString('en-IN') : '—'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 font-bold uppercase tracking-wider">Registered At:</span>
-                        <span className="text-slate-500">
-                          {selectedDayDetail.record.createdAt ? new Date(selectedDayDetail.record.createdAt).toLocaleDateString('en-IN') : '—'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ) : (
                 <>
@@ -490,30 +527,37 @@ function CalendarGrid({ employee, attendanceRecords, dates, onRefresh, lateOverr
                     )}
                   </div>
 
-                  {selectedDayDetail.record && (
-                    <>
-                      <div className="space-y-1">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Marked By</p>
-                        <p className="text-xs font-semibold text-slate-700 truncate bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
-                          {selectedDayDetail.record.markedByName || 'System Generated / Seed'}
-                        </p>
-                      </div>
+                  {selectedDayDetail.record && (() => {
+                    const firstLog = selectedDayDetail.record.history && selectedDayDetail.record.history.length > 0
+                      ? selectedDayDetail.record.history[0]
+                      : null;
+                    const originalMarker = firstLog?.updatedByName || selectedDayDetail.record.markedBy || 'System Generated / Seed';
+                    const originalDate = firstLog?.updatedAt || selectedDayDetail.record.createdAt;
+                    return (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Marked By</p>
+                          <p className="text-xs font-semibold text-slate-700 truncate bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
+                            {originalMarker}
+                          </p>
+                        </div>
 
-                      <div className="space-y-1">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Notes / Explanations</p>
-                        <p className="text-xs text-slate-600 bg-white p-2.5 border border-slate-200 rounded-lg min-h-[50px] leading-relaxed italic">
-                          {selectedDayDetail.record.notes || 'No administrative notes submitted.'}
-                        </p>
-                      </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Notes / Explanations</p>
+                          <p className="text-xs text-slate-600 bg-white p-2.5 border border-slate-200 rounded-lg min-h-[50px] leading-relaxed italic">
+                            {selectedDayDetail.record.notes || 'No administrative notes submitted.'}
+                          </p>
+                        </div>
 
-                      <div className="space-y-1">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Registration Date</p>
-                        <p className="text-[10px] text-slate-500">
-                          {selectedDayDetail.record.createdAt ? new Date(selectedDayDetail.record.createdAt).toLocaleString('en-IN') : '—'}
-                        </p>
-                      </div>
-                    </>
-                  )}
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Registration Date</p>
+                          <p className="text-[10px] text-slate-500">
+                            {originalDate ? new Date(originalDate).toLocaleString('en-IN') : '—'}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {canEditDay && !isEditing && (
                     <button

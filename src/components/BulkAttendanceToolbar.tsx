@@ -6,7 +6,7 @@ import AttendanceStatusDropdown from './AttendanceStatusDropdown';
 
 interface BulkAttendanceToolbarProps {
   selectedCount: number;
-  onApply: (status: AttendanceStatus, notes: string) => void;
+  onApply: (status: AttendanceStatus | '', notes: string) => void;
   onClear: () => void;
   loading: boolean;
   isFuture?: boolean;
@@ -23,7 +23,7 @@ export default function BulkAttendanceToolbar({
     (status) => !isFuture || status === 'SCHEDULE_OFF'
   );
 
-  const handleApply = (status: AttendanceStatus) => {
+  const handleApply = (status: AttendanceStatus | '') => {
     onApply(status, '');
   };
 
@@ -60,6 +60,15 @@ export default function BulkAttendanceToolbar({
           );
         })}
         <div className="h-5 w-px bg-indigo-200 mx-1" />
+        <button
+          type="button"
+          onClick={() => handleApply('')}
+          disabled={loading}
+          className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
+          title="Unmark / Clear Attendance"
+        >
+          Unmark
+        </button>
         <AttendanceStatusDropdown
           value=""
           onChange={(status) => handleApply(status)}

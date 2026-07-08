@@ -500,10 +500,10 @@ export async function POST(request: NextRequest) {
 
     // Validate all records
     for (const record of records) {
-      if (!record.employeeId || !record.date || !record.status) {
+      if (!record.employeeId || !record.date || record.status === undefined) {
         return NextResponse.json({ error: 'Each record must have employeeId, date, and status' }, { status: 400 });
       }
-      if (!validStatuses.includes(record.status)) {
+      if (record.status !== '' && !validStatuses.includes(record.status)) {
         return NextResponse.json({ error: `Invalid status: ${record.status}` }, { status: 400 });
       }
     }
@@ -519,10 +519,10 @@ export async function POST(request: NextRequest) {
       const isFuture = attendanceDate > todayDate;
 
       if (isFuture) {
-        // If date is in the future, only 'SCHEDULE_OFF' can be marked
-        if (record.status !== 'SCHEDULE_OFF') {
+        // If date is in the future, only 'SCHEDULE_OFF' or '' can be marked/updated
+        if (record.status !== 'SCHEDULE_OFF' && record.status !== '') {
           return NextResponse.json({
-            error: `Only 'Off Day' (SCHEDULE_OFF) attendance can be marked for future dates. Date ${record.date} status was ${record.status}.`
+            error: `Only 'Off Day' (SCHEDULE_OFF) attendance or clearing can be marked for future dates. Date ${record.date} status was ${record.status}.`
           }, { status: 400 });
         }
         // Future date off days are allowed for admin and hr roles
@@ -562,6 +562,28 @@ export async function POST(request: NextRequest) {
     const employeeIds = [...new Set(records.map((r) => r.employeeId))];
     const dbEmployees = await Employee.find({ _id: { $in: employeeIds } }).lean();
     const employeeMap = new Map(dbEmployees.map((e) => [e._id.toString(), e]));
+
+    // Block attendance marking before employee's joining date
+    for (const record of records) {
+      const emp = employeeMap.get(record.employeeId);
+      if (!emp) {
+        return NextResponse.json({ error: `Employee not found: ${record.employeeId}` }, { status: 404 });
+      }
+
+      if (emp.joiningDate) {
+        const attendanceDate = new Date(record.date);
+        attendanceDate.setHours(0, 0, 0, 0);
+
+        const joiningDate = new Date(emp.joiningDate);
+        joiningDate.setHours(0, 0, 0, 0);
+
+        if (attendanceDate < joiningDate) {
+          return NextResponse.json({
+            error: `Cannot mark attendance for ${emp.name} before their joining date (${joiningDate.toLocaleDateString('en-IN')}).`
+          }, { status: 400 });
+        }
+      }
+    }
 
     // Map dates being marked in the current batch per employee to support bulk uploads
     const batchMarkedDatesByEmp = new Map<string, Set<string>>();
@@ -814,8 +836,15 @@ export async function POST(request: NextRequest) {
 
         let finalStatus = record.status;
         let policyNote = '';
+        let result;
 
-        // 1. PSL Overflow logic
+        if (record.status === '') {
+          if (existing) {
+            await Attendance.deleteOne({ _id: existing._id });
+          }
+          result = { employeeId: record.employeeId, date: attendanceDate, status: '' };
+        } else {
+          // 1. PSL Overflow logic
         if (record.status === 'PAID_SICK_LEAVE') {
           const overflowCheck = await checkPSLOverflow(record.employeeId, attendanceDate, existing?._id);
           if (overflowCheck.isOverflow) {
@@ -884,7 +913,6 @@ export async function POST(request: NextRequest) {
           notes: ((record.notes || '') + (policyNote ? ` ${policyNote}` : '')).trim(),
         };
 
-        let result;
         if (existing) {
           existing.status = finalStatus as any;
           existing.markedBy = new mongoose.Types.ObjectId(authUser.userId) as any;
@@ -901,6 +929,7 @@ export async function POST(request: NextRequest) {
             notes: ((record.notes || '') + (policyNote ? ` ${policyNote}` : '')).trim(),
             history: [historyEntry],
           });
+        }
         }
 
         // 3. WFH Restriction and Compliance Alert self-healing check (creates or clears locks in real-time)

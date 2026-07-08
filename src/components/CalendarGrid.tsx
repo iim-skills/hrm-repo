@@ -186,30 +186,37 @@ export default function CalendarGrid({ employee, attendanceRecords, dates }: Cal
                 </div>
               </div>
 
-              {selectedDayDetail.record && (
-                <>
-                  <div className="space-y-1">
-                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Marked By</p>
-                    <p className="text-xs font-semibold text-slate-700 truncate bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
-                      {selectedDayDetail.record.markedBy || 'System Generated / Seed'}
-                    </p>
-                  </div>
+              {selectedDayDetail.record && (() => {
+                const firstLog = selectedDayDetail.record.history && selectedDayDetail.record.history.length > 0
+                  ? selectedDayDetail.record.history[0]
+                  : null;
+                const originalMarker = firstLog?.updatedByName || selectedDayDetail.record.markedBy || 'System Generated / Seed';
+                const originalDate = firstLog?.updatedAt || selectedDayDetail.record.createdAt;
+                return (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Marked By</p>
+                      <p className="text-xs font-semibold text-slate-700 truncate bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
+                        {originalMarker}
+                      </p>
+                    </div>
 
-                  <div className="space-y-1">
-                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Notes / Explanations</p>
-                    <p className="text-xs text-slate-600 bg-white p-2.5 border border-slate-200 rounded-lg min-h-[50px] leading-relaxed italic">
-                      {selectedDayDetail.record.notes || 'No administrative notes submitted.'}
-                    </p>
-                  </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Notes / Explanations</p>
+                      <p className="text-xs text-slate-600 bg-white p-2.5 border border-slate-200 rounded-lg min-h-[50px] leading-relaxed italic">
+                        {selectedDayDetail.record.notes || 'No administrative notes submitted.'}
+                      </p>
+                    </div>
 
-                  <div className="space-y-1">
-                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Registration Date</p>
-                    <p className="text-[10px] text-slate-500">
-                      {new Date(selectedDayDetail.record.createdAt).toLocaleString('en-IN')}
-                    </p>
-                  </div>
-                </>
-              )}
+                    <div className="space-y-1">
+                      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Registration Date</p>
+                      <p className="text-[10px] text-slate-500">
+                        {originalDate ? new Date(originalDate).toLocaleString('en-IN') : '—'}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           ) : (
             <div className="text-center py-12 space-y-2 my-auto">

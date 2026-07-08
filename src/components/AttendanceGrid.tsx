@@ -260,7 +260,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   //  3. On success: apply server's actual final status (e.g. PSL→LWP overflow)
   //     then silently re-sync policy counts in the background
   //  4. On error: revert the cell and show a toast — never a full reload
-  const markAttendance = async (employeeId: string, date: string, status: AttendanceStatus) => {
+  const markAttendance = async (employeeId: string, date: string, status: AttendanceStatus | '') => {
     const cellKey = `${employeeId}-${date}`;
     const prevAtt = attendanceMap[employeeId]?.[date] ?? null;
 
@@ -268,17 +268,21 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
     setSavingCells((prev) => new Set(prev).add(cellKey));
     setAttendanceMap((prev) => {
       const updated = { ...prev, [employeeId]: { ...prev[employeeId] } };
-      updated[employeeId][date] = {
-        ...(prevAtt ?? {}),
-        _id: prevAtt?._id ?? '',
-        employeeId,
-        date,
-        status,
-        markedBy: prevAtt?.markedBy ?? '',
-        notes: prevAtt?.notes ?? '',
-        createdAt: prevAtt?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } as IAttendance;
+      if (status === '') {
+        delete updated[employeeId][date];
+      } else {
+        updated[employeeId][date] = {
+          ...(prevAtt ?? {}),
+          _id: prevAtt?._id ?? '',
+          employeeId,
+          date,
+          status,
+          markedBy: prevAtt?.markedBy ?? '',
+          notes: prevAtt?.notes ?? '',
+          createdAt: prevAtt?.createdAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as IAttendance;
+      }
       return updated;
     });
 
@@ -333,7 +337,7 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
   };
 
   // Bulk mark attendance
-  const handleBulkApply = async (status: AttendanceStatus, notes: string) => {
+  const handleBulkApply = async (status: AttendanceStatus | '', notes: string) => {
     if (selectedEmployees.size === 0) return;
 
     const date = selectedDate || toDateKey(new Date());
@@ -741,7 +745,16 @@ export default function AttendanceGrid({ role }: AttendanceGridProps) {
                     targetDate.setHours(0, 0, 0, 0);
                     const isFuture = targetDate > todayDate;
 
-                    const editable = !isReadonly && canEditDate(activeRole, date);
+                    let isBeforeJoining = false;
+                    if (emp.joiningDate) {
+                      const joining = new Date(emp.joiningDate);
+                      joining.setHours(0, 0, 0, 0);
+                      if (targetDate < joining) {
+                        isBeforeJoining = true;
+                      }
+                    }
+
+                    const editable = !isReadonly && !isBeforeJoining && canEditDate(activeRole, date);
                     const isRestricted = isWFHRestricted(emp._id, date);
                     const pslBal = pslBalances[emp._id]?.[toCycleKey(date)];
                     const isPSLRestricted = pslBal !== undefined

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Badge from '@/components/Badge';
 import LoadingState from '@/components/LoadingState';
 import ErrorState from '@/components/ErrorState';
+import { getCycleBoundsForDate } from '@/lib/cycleUtils';
 
 interface EmployeeShort {
   _id: string;
@@ -64,7 +65,7 @@ export default function ComplianceDashboard() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'at-risk' | 'sandwich' | 'wfh' | 'alerts' | 'late-overrides'>('at-risk');
+  const [activeTab, setActiveTab] = useState<'at-risk' | 'sandwich' | 'wfh' | 'alerts' | 'late-overrides'>('late-overrides');
 
   // Modal State for Sandwich Override
   const [selectedFlags, setSelectedFlags] = useState<SandwichFlag[] | null>(null);
@@ -81,6 +82,43 @@ export default function ComplianceDashboard() {
 
   const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({});
 
+  // Group sandwich flags by cycle first, then by employee within each cycle
+  const sandwichByCycle = useMemo(() => {
+    // Bucket flags into cycles
+    const cycleMap: Record<string, {
+      cycleLabel: string;
+      cycleStart: Date;
+      employees: Record<string, { employee: EmployeeShort; flags: SandwichFlag[] }>;
+    }> = {};
+
+    for (const flag of sandwichFlags) {
+      const { startDate, endDate, cycleMonth, cycleYear } = getCycleBoundsForDate(new Date(flag.date));
+      const cycleKey = `${cycleYear}-${String(cycleMonth).padStart(2, '0')}`;
+      const cycleLabel = `${startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+      if (!cycleMap[cycleKey]) {
+        cycleMap[cycleKey] = { cycleLabel, cycleStart: startDate, employees: {} };
+      }
+
+      const empId = flag.employeeId?._id?.toString() || flag.employeeId?.toString() || 'unknown';
+      if (!cycleMap[cycleKey].employees[empId]) {
+        cycleMap[cycleKey].employees[empId] = { employee: flag.employeeId, flags: [] };
+      }
+      cycleMap[cycleKey].employees[empId].flags.push(flag);
+    }
+
+    // Sort cycles newest first, convert employees map to array
+    return Object.entries(cycleMap)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([cycleKey, { cycleLabel, cycleStart, employees }]) => ({
+        cycleKey,
+        cycleLabel,
+        cycleStart,
+        groups: Object.values(employees),
+      }));
+  }, [sandwichFlags]);
+
+  // Kept for backward compatibility with empty-state check
   const groupedSandwichFlags = useMemo(() => {
     const map: Record<string, { employee: EmployeeShort; flags: SandwichFlag[] }> = {};
     for (const flag of sandwichFlags) {
@@ -265,7 +303,9 @@ export default function ComplianceDashboard() {
   // Quick statistics calculation
   const totalAlerts = alerts.length;
   const activeRestrictions = wfhRestrictions.length;
-  const totalSandwiches = sandwichFlags.filter(f => !f.isOverridden).length;
+  const totalSandwichedEmployees = new Set(
+    sandwichFlags.filter(f => !f.isOverridden).map(f => f.employeeId?._id?.toString() || f.employeeId?.toString())
+  ).size;
   const atRiskCount = atRiskEmployees.length;
 
   return (
@@ -315,8 +355,8 @@ export default function ComplianceDashboard() {
               </svg>
             </div>
           </div>
-          <p className={`text-3xl font-extrabold ${totalSandwiches > 0 ? 'text-rose-600' : 'text-slate-800'}`}>{totalSandwiches}</p>
-          <p className="text-[11px] text-slate-400 mt-1.5 font-medium">Auto converted off/WFH days to LWP</p>
+          <p className={`text-3xl font-extrabold ${totalSandwichedEmployees > 0 ? 'text-rose-600' : 'text-slate-800'}`}>{totalSandwichedEmployees}</p>
+          <p className="text-[11px] text-slate-400 mt-1.5 font-medium">Employees with sandwich conversion</p>
         </div>
 
         {/* WFH Lockout Card */}
@@ -351,20 +391,23 @@ export default function ComplianceDashboard() {
 
       {/* Tabs Menu Navigation */}
       <div className="border-b border-slate-200 flex flex-wrap gap-0">
+        {/* 1. Late Overrides */}
         <button
-          onClick={() => setActiveTab('at-risk')}
-          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'at-risk'
+          onClick={() => setActiveTab('late-overrides')}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'late-overrides'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-400 hover:text-slate-700 hover:border-slate-300'
             }`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          At-Risk Employees
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'at-risk' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
-            }`}>{atRiskCount}</span>
+          Late Overrides
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'late-overrides' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
+            }`}>{lateOverrides.filter(req => req.status === 'PENDING').length}</span>
         </button>
+
+        {/* 2. Sandwich Conversions */}
         <button
           onClick={() => setActiveTab('sandwich')}
           className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'sandwich'
@@ -377,8 +420,10 @@ export default function ComplianceDashboard() {
           </svg>
           Sandwich Conversions
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'sandwich' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
-            }`}>{sandwichFlags.length}</span>
+            }`}>{totalSandwichedEmployees}</span>
         </button>
+
+        {/* 3. WFH Restrictions */}
         <button
           onClick={() => setActiveTab('wfh')}
           className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'wfh'
@@ -393,6 +438,8 @@ export default function ComplianceDashboard() {
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'wfh' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
             }`}>{activeRestrictions}</span>
         </button>
+
+        {/* 4. System Alerts */}
         <button
           onClick={() => setActiveTab('alerts')}
           className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'alerts'
@@ -407,19 +454,21 @@ export default function ComplianceDashboard() {
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'alerts' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
             }`}>{totalAlerts}</span>
         </button>
+
+        {/* 5. At-Risk Employees */}
         <button
-          onClick={() => setActiveTab('late-overrides')}
-          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'late-overrides'
+          onClick={() => setActiveTab('at-risk')}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 flex items-center gap-2 cursor-pointer ${activeTab === 'at-risk'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-400 hover:text-slate-700 hover:border-slate-300'
             }`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          Late Overrides
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'late-overrides' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
-            }`}>{lateOverrides.filter(req => req.status === 'PENDING').length}</span>
+          At-Risk Employees
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'at-risk' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
+            }`}>{atRiskCount}</span>
         </button>
 
       </div>
@@ -729,218 +778,233 @@ export default function ComplianceDashboard() {
                 <p className="text-xs text-slate-400 mt-1">No scheduled off-days are currently sandwiched or converted to LWP.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[40%]">Employee</th>
-                      <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[30%]">Sandwiched Date(s)</th>
-                      <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right w-[30%]">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {groupedSandwichFlags.map((group) => {
-                      const empId = group.employee?._id?.toString() || 'unknown';
-                      const isExpanded = !!expandedEmployees[empId];
-                      const totalDays = group.flags.length;
-                      const activeCount = group.flags.filter(f => !f.isOverridden).length;
-                      const initial = group.employee?.name?.charAt(0)?.toUpperCase() || 'E';
-                      const avatarPalette: Record<string, string> = {
-                        A: 'bg-violet-100 text-violet-600', B: 'bg-blue-100 text-blue-600',
-                        C: 'bg-cyan-100 text-cyan-600', D: 'bg-indigo-100 text-indigo-600',
-                        E: 'bg-emerald-100 text-emerald-600', F: 'bg-fuchsia-100 text-fuchsia-600',
-                        G: 'bg-green-100 text-green-600', H: 'bg-orange-100 text-orange-600',
-                        I: 'bg-sky-100 text-sky-600', J: 'bg-amber-100 text-amber-600',
-                        K: 'bg-teal-100 text-teal-600', L: 'bg-lime-100 text-lime-600',
-                        M: 'bg-purple-100 text-purple-600', N: 'bg-rose-100 text-rose-600',
-                        O: 'bg-orange-100 text-orange-600', P: 'bg-pink-100 text-pink-600',
-                        Q: 'bg-slate-100 text-slate-600', R: 'bg-red-100 text-red-600',
-                        S: 'bg-indigo-100 text-indigo-600', T: 'bg-teal-100 text-teal-600',
-                        U: 'bg-purple-100 text-purple-600', V: 'bg-violet-100 text-violet-600',
-                        W: 'bg-blue-100 text-blue-600', X: 'bg-slate-100 text-slate-600',
-                        Y: 'bg-yellow-100 text-yellow-600', Z: 'bg-zinc-100 text-zinc-600',
-                      };
-                      const avatarClass = avatarPalette[initial] || 'bg-indigo-100 text-indigo-600';
+              <div className="space-y-4">
+                    {sandwichByCycle.map(({ cycleKey, cycleLabel, groups }) => (
+                      <div key={cycleKey} className="overflow-hidden rounded-xl border border-slate-200">
+                        {/* Cycle Header */}
+                        <div className="bg-indigo-50 border-b border-indigo-200/60 px-5 py-3 flex items-center gap-3">
+                          <svg className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Cycle: {cycleLabel}</span>
+                          <span className="ml-auto text-[10px] font-bold bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
+                            {new Set(groups.filter(g => g.flags.some(f => !f.isOverridden)).map(g => g.employee?._id)).size} affected
+                          </span>
+                        </div>
 
-                      return (
-                        <Fragment key={empId}>
-                          <tr
-                            className="hover:bg-slate-50/70 transition-colors duration-150 cursor-pointer"
-                            onClick={() => toggleEmployeeExpand(empId)}
-                          >
-                            {/* Employee */}
-                            <td className="px-5 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${avatarClass}`}>
-                                  {initial}
-                                </div>
-                                <div>
-                                  <Link href={`/hr/employees/${empId}`} onClick={(e) => e.stopPropagation()}>
-                                    <span className="font-semibold text-slate-900 text-sm hover:text-indigo-600 hover:underline cursor-pointer transition">
-                                      {group.employee?.name || 'Unknown'}
-                                    </span>
-                                  </Link>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">{group.employee?.department || '—'}</p>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Dates */}
-                            <td className="px-5 py-4">
-                              <div className="flex flex-col">
-                                <span className="font-bold text-slate-900 text-sm">
-                                  {totalDays} {totalDays === 1 ? 'Day' : 'Days'}
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                                  {group.flags.map(f => new Date(f.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })).join(' & ')}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Actions */}
-                            <td className="px-5 py-4 text-right">
-                              <div className="inline-flex items-center gap-2 justify-end">
-                                {activeCount > 0 ? (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedFlags(group.flags.filter(f => !f.isOverridden));
-                                    }}
-                                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all duration-200 cursor-pointer whitespace-nowrap"
-                                  >
-                                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                    </svg>
-                                    Override Penalty
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl">
-                                    <svg className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    All Waived
-                                  </span>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleEmployeeExpand(empId);
-                                  }}
-                                  className={`inline-flex items-center justify-center w-9 h-9 border rounded-xl transition-all duration-200 cursor-pointer flex-shrink-0 ${isExpanded
-                                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'
-                                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'
-                                    }`}
-                                  title={isExpanded ? 'Hide Details' : 'View Details'}
-                                >
-                                  <svg
-                                    className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* Collapsible details dropdown row */}
-                          {isExpanded && (
-                            <tr className="bg-slate-50/70 border-l-4 border-indigo-500">
-                              <td colSpan={3} className="px-5 py-4">
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                                    <h4 className="font-bold text-slate-800 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                                      <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                      </svg>
-                                      Detailed Sandwich Leaves ({group.employee?.name})
-                                    </h4>
-                                    <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full">
-                                      {activeCount} active penalties / {totalDays} total
-                                    </span>
-                                  </div>
-
-                                  <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white shadow-sm">
-                                    <table className="w-full text-left border-collapse text-[11px]">
-                                      <thead>
-                                        <tr className="bg-slate-50/80 border-b border-slate-200/80">
-                                          <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sandwiched Date</th>
-                                          <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Original Status</th>
-                                          <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Status</th>
-                                          <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Override Info</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-slate-100">
-                                        {group.flags.map((flag) => (
-                                          <tr key={flag._id} className="hover:bg-slate-50/30 transition-colors">
-                                            <td className="px-6 py-3.5 text-slate-900 font-bold text-[11px]">
-                                              {new Date(flag.date).toLocaleDateString('en-IN', {
-                                                weekday: 'short',
-                                                day: 'numeric',
-                                                month: 'short',
-                                                year: 'numeric'
-                                              })}
-                                            </td>
-                                            <td className="px-6 py-3.5">
-                                              <span className="inline-flex px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold uppercase tracking-wide">
-                                                {flag.originalStatus.replace(/_/g, ' ')}
-                                              </span>
-                                            </td>
-                                            <td className="px-6 py-3.5">
-                                              <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border ${flag.isOverridden
-                                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                                  : 'bg-rose-50 border-rose-100 text-rose-700'
-                                                }`}>
-                                                {flag.isOverridden ? flag.originalStatus.replace(/_/g, ' ') : 'LWP'}
-                                              </span>
-                                            </td>
-                                            <td className="px-6 py-3.5">
-                                              {flag.isOverridden ? (
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-emerald-600 font-bold flex items-center gap-1 text-[11px]">
-                                                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                    Waived (Overridden)
-                                                  </span>
-                                                  {flag.overrideReason && (
-                                                    <p className="text-[10px] text-slate-500 italic font-medium max-w-xs">
-                                                      &quot;{flag.overrideReason}&quot;
-                                                    </p>
-                                                  )}
-                                                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">
-                                                    By {flag.overriddenBy?.email || 'HR'}
-                                                  </p>
-                                                </div>
-                                              ) : (
-                                                <div className="flex flex-col gap-0.5">
-                                                  <span className="text-rose-600 font-bold flex items-center gap-1 text-[11px]">
-                                                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                    Converted to LWP
-                                                  </span>
-                                                  <p className="text-[10px] text-slate-400 font-medium">Auto-calculated</p>
-                                                </div>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </td>
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[40%]">Employee</th>
+                              <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[30%]">Sandwiched Date(s)</th>
+                              <th className="px-5 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right w-[30%]">Action</th>
                             </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {groups.map((group) => {
+                              const empId = group.employee?._id?.toString() || 'unknown';
+                              const isExpanded = !!expandedEmployees[empId];
+                              const totalDays = group.flags.length;
+                              const activeCount = group.flags.filter(f => !f.isOverridden).length;
+                              const initial = group.employee?.name?.charAt(0)?.toUpperCase() || 'E';
+                              const avatarPalette: Record<string, string> = {
+                                A: 'bg-violet-100 text-violet-600', B: 'bg-blue-100 text-blue-600',
+                                C: 'bg-cyan-100 text-cyan-600', D: 'bg-indigo-100 text-indigo-600',
+                                E: 'bg-emerald-100 text-emerald-600', F: 'bg-fuchsia-100 text-fuchsia-600',
+                                G: 'bg-green-100 text-green-600', H: 'bg-orange-100 text-orange-600',
+                                I: 'bg-sky-100 text-sky-600', J: 'bg-amber-100 text-amber-600',
+                                K: 'bg-teal-100 text-teal-600', L: 'bg-lime-100 text-lime-600',
+                                M: 'bg-purple-100 text-purple-600', N: 'bg-rose-100 text-rose-600',
+                                O: 'bg-orange-100 text-orange-600', P: 'bg-pink-100 text-pink-600',
+                                Q: 'bg-slate-100 text-slate-600', R: 'bg-red-100 text-red-600',
+                                S: 'bg-indigo-100 text-indigo-600', T: 'bg-teal-100 text-teal-600',
+                                U: 'bg-purple-100 text-purple-600', V: 'bg-violet-100 text-violet-600',
+                                W: 'bg-blue-100 text-blue-600', X: 'bg-slate-100 text-slate-600',
+                                Y: 'bg-yellow-100 text-yellow-600', Z: 'bg-zinc-100 text-zinc-600',
+                              };
+                              const avatarClass = avatarPalette[initial] || 'bg-indigo-100 text-indigo-600';
+
+                              return (
+                                <Fragment key={`${cycleKey}-${empId}`}>
+                                  <tr
+                                    className="hover:bg-slate-50/70 transition-colors duration-150 cursor-pointer"
+                                    onClick={() => toggleEmployeeExpand(`${cycleKey}-${empId}`)}
+                                  >
+                                    {/* Employee */}
+                                    <td className="px-5 py-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${avatarClass}`}>
+                                          {initial}
+                                        </div>
+                                        <div>
+                                          <Link href={`/hr/employees/${empId}`} onClick={(e) => e.stopPropagation()}>
+                                            <span className="font-semibold text-slate-900 text-sm hover:text-indigo-600 hover:underline cursor-pointer transition">
+                                              {group.employee?.name || 'Unknown'}
+                                            </span>
+                                          </Link>
+                                          <p className="text-[10px] text-slate-400 mt-0.5">{group.employee?.department || '—'}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+
+                                    {/* Dates */}
+                                    <td className="px-5 py-4">
+                                      <div className="flex flex-col">
+                                        <span className="font-bold text-slate-900 text-sm">
+                                          {totalDays} {totalDays === 1 ? 'Day' : 'Days'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                                          {group.flags.map(f => new Date(f.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })).join(' & ')}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td className="px-5 py-4 text-right">
+                                      <div className="inline-flex items-center gap-2 justify-end">
+                                        {activeCount > 0 ? (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedFlags(group.flags.filter(f => !f.isOverridden));
+                                            }}
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all duration-200 cursor-pointer whitespace-nowrap"
+                                          >
+                                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                            </svg>
+                                            Override Penalty
+                                          </button>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl">
+                                            <svg className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            All Waived
+                                          </span>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleEmployeeExpand(`${cycleKey}-${empId}`);
+                                          }}
+                                          className={`inline-flex items-center justify-center w-9 h-9 border rounded-xl transition-all duration-200 cursor-pointer flex-shrink-0 ${!!expandedEmployees[`${cycleKey}-${empId}`]
+                                              ? 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'
+                                              : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'
+                                            }`}
+                                          title={!!expandedEmployees[`${cycleKey}-${empId}`] ? 'Hide Details' : 'View Details'}
+                                        >
+                                          <svg
+                                            className={`w-4 h-4 transition-transform duration-300 ${!!expandedEmployees[`${cycleKey}-${empId}`] ? 'rotate-180' : ''}`}
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+
+                                  {/* Collapsible details dropdown row */}
+                                  {!!expandedEmployees[`${cycleKey}-${empId}`] && (
+                                    <tr className="bg-slate-50/70 border-l-4 border-indigo-500">
+                                      <td colSpan={3} className="px-5 py-4">
+                                        <div className="space-y-3">
+                                          <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                                            <h4 className="font-bold text-slate-800 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                                              <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                              </svg>
+                                              Detailed Sandwich Leaves ({group.employee?.name})
+                                            </h4>
+                                            <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full">
+                                              {activeCount} active penalties / {totalDays} total
+                                            </span>
+                                          </div>
+
+                                          <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white shadow-sm">
+                                            <table className="w-full text-left border-collapse text-[11px]">
+                                              <thead>
+                                                <tr className="bg-slate-50/80 border-b border-slate-200/80">
+                                                  <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sandwiched Date</th>
+                                                  <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Original Status</th>
+                                                  <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Status</th>
+                                                  <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Override Info</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100">
+                                                {group.flags.map((flag) => (
+                                                  <tr key={flag._id} className="hover:bg-slate-50/30 transition-colors">
+                                                    <td className="px-6 py-3.5 text-slate-900 font-bold text-[11px]">
+                                                      {new Date(flag.date).toLocaleDateString('en-IN', {
+                                                        weekday: 'short',
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        year: 'numeric'
+                                                      })}
+                                                    </td>
+                                                    <td className="px-6 py-3.5">
+                                                      <span className="inline-flex px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold uppercase tracking-wide">
+                                                        {flag.originalStatus.replace(/_/g, ' ')}
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-6 py-3.5">
+                                                      <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border ${flag.isOverridden
+                                                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                                          : 'bg-rose-50 border-rose-100 text-rose-700'
+                                                        }`}>
+                                                        {flag.isOverridden ? flag.originalStatus.replace(/_/g, ' ') : 'LWP'}
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-6 py-3.5">
+                                                      {flag.isOverridden ? (
+                                                        <div className="flex flex-col gap-0.5">
+                                                          <span className="text-emerald-600 font-bold flex items-center gap-1 text-[11px]">
+                                                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                            Waived (Overridden)
+                                                          </span>
+                                                          {flag.overrideReason && (
+                                                            <p className="text-[10px] text-slate-500 italic font-medium max-w-xs">
+                                                              &quot;{flag.overrideReason}&quot;
+                                                            </p>
+                                                          )}
+                                                          <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">
+                                                            By {flag.overriddenBy?.email || 'HR'}
+                                                          </p>
+                                                        </div>
+                                                      ) : (
+                                                        <div className="flex flex-col gap-0.5">
+                                                          <span className="text-rose-600 font-bold flex items-center gap-1 text-[11px]">
+                                                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
+                                                            Converted to LWP
+                                                          </span>
+                                                          <p className="text-[10px] text-slate-400 font-medium">Auto-calculated</p>
+                                                        </div>
+                                                      )}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
             )}
           </div>
         )}

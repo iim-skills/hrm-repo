@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import type { Role } from '@/types';
@@ -75,16 +76,28 @@ export default function Sidebar({ role: initialRole }: { role: Role }) {
   };
 
   return (
-    <aside className={`fixed left-0 top-0 z-40 h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <aside className={`fixed left-0 top-0 z-[60] h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       {/* Logo Container */}
       <div className={`relative flex items-center gap-3 px-6 py-5 border-b border-slate-700/50 ${isCollapsed ? 'justify-center px-4' : ''}`}>
-        <div className="w-9 h-9 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold shadow-lg shadow-indigo-500/25 shrink-0">
-          HR
-        </div>
-
-        {!isCollapsed && (
-          <div className="truncate">
-            <h1 className="text-base font-semibold tracking-tight truncate">HRM System</h1>
+        {isCollapsed ? (
+          <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
+            <img
+              src="/iim-skills-official-logo.png"
+              alt="IIM Skills"
+              width={50}
+              height={50}
+              className="object-contain"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-start gap-1 truncate">
+            <img
+              src="/iim-skills-official-logo.png"
+              alt="IIM Skills HRM"
+              width={100}
+              height={100}
+              className="object-contain bg-white p-1.5 rounded-md"
+            />
             <p className="text-[11px] text-slate-400 capitalize truncate">{role} Portal</p>
           </div>
         )}
