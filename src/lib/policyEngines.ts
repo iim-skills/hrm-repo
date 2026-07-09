@@ -16,7 +16,7 @@ import { getCycleBoundsForDate, getCycleBounds } from './cycleUtils';
 export const UNPLANNED_LEAVES: AttendanceStatus[] = ['LWP', 'PAID_SICK_LEAVE'];
 
 // Scheduled off or WFH/Remote days which can be sandwiched
-export const SANDWICHABLE_STATUSES: AttendanceStatus[] = ['SCHEDULE_OFF', 'WFH', 'REMOTE_COMFORT_DAY'];
+export const SANDWICHABLE_STATUSES: AttendanceStatus[] = ['SCHEDULE_OFF', 'WFH'];
 
 /**
  * Checks if an employee has enough PSL balance for a sick leave request.
@@ -258,7 +258,9 @@ export async function runSandwichCheck(
 
   for (let i = 0; i < daysList.length; i++) {
     const dayInfo = daysList[i];
-    const isSandwichable = dayInfo.status && (SANDWICHABLE_STATUSES.includes(dayInfo.originalStatus as any) || dayInfo.hasFlag);
+    const isStatusSandwichable = dayInfo.status && (SANDWICHABLE_STATUSES.includes(dayInfo.status) || dayInfo.status === 'LWP');
+    const isOriginalSandwichable = dayInfo.originalStatus && SANDWICHABLE_STATUSES.includes(dayInfo.originalStatus);
+    const isSandwichable = isStatusSandwichable && isOriginalSandwichable;
     if (isSandwichable) {
       currentBlock.push(dayInfo);
     } else {
@@ -298,11 +300,11 @@ export async function runSandwichCheck(
     const hasUnplannedNeighbor = isLeftUnplanned || isRightUnplanned;
     if (hasUnplannedNeighbor) {
       const hasOff = block.some((d) => d.originalStatus === 'SCHEDULE_OFF');
-      const hasWFH = block.some((d) => d.originalStatus === 'WFH' || d.originalStatus === 'REMOTE_COMFORT_DAY');
+      const hasWFH = block.some((d) => d.originalStatus === 'WFH');
 
       if (hasOff && hasWFH) {
         for (const d of block) {
-          if (d.originalStatus === 'SCHEDULE_OFF' || d.originalStatus === 'WFH' || d.originalStatus === 'REMOTE_COMFORT_DAY') {
+          if (d.originalStatus === 'SCHEDULE_OFF' || d.originalStatus === 'WFH') {
             sandwichedDates.add(d.dateStr);
           }
         }
