@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.0",
-    "agentation": "^3.0.2",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.0",
     "lucide-react": "^1.17.0",

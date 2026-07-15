@@ -20,6 +20,7 @@ const navItems: Record<Role, NavItem[]> = {
     { label: 'Employees', href: '/admin/employees', icon: '👥' },
     { label: 'Attendance', href: '/admin/attendance', icon: '📅' },
     { label: 'Monthly Report', href: '/admin/report', icon: '📋' },
+    { label: 'Salary Calculation', href: '/admin/salary', icon: '💰' },
     { label: 'Compliance', href: '/hr/compliance', icon: '🛡️' },
   ],
   hr: [
@@ -28,6 +29,7 @@ const navItems: Record<Role, NavItem[]> = {
     { label: 'Employees', href: '/hr/employees', icon: '👥' },
     { label: 'Attendance', href: '/hr/attendance', icon: '📅' },
     { label: 'Monthly Report', href: '/hr/report', icon: '📋' },
+    { label: 'Salary Calculation', href: '/hr/salary', icon: '💰' },
     { label: 'Carry Forward', href: '/hr/leave-carry-forward', icon: '🔄' },
     // { label: 'Compliance', href: '/hr/compliance', icon: '🛡️' },
     { label: 'My Profile', href: '/hr/profile', icon: '👤' },

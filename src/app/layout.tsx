@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
-import { Agentation } from 'agentation';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -21,7 +20,6 @@ export default function RootLayout({
       <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased`}>
         <AuthProvider>
           {children}
-          {process.env.NODE_ENV === 'development' && <Agentation />}
         </AuthProvider>
       </body>
     </html>
