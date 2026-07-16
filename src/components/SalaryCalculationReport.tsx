@@ -354,7 +354,7 @@ export default function SalaryCalculationReport({ role }: SalaryCalculationRepor
     if (salaryTab === 'joined_this_month') {
       headers = ['Employee Name', 'Joined Date', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'RH', 'LWP', 'Total Working Days', 'Late Deduction', 'Payable Days'];
     } else {
-      headers = ['Employee Name', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'RH', 'LWP', 'Deductions', 'Payable Days'];
+      headers = ['Employee Name', 'Department', 'P', 'WFH', 'PSL', 'HD', 'RCD', 'OFF', 'RH', 'LWP', 'Late Deduction', 'Deductions', 'Payable Days'];
     }
 
     const rows = processedRows.map((row) => {
@@ -387,6 +387,7 @@ export default function SalaryCalculationReport({ role }: SalaryCalculationRepor
           row.employee.name,
           row.employee.department,
           ...baseMetrics,
+          row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, ''),
           row.metrics.salaryDeductionDays.toFixed(2).replace(/\.00$/, ''),
           (datesInMonth.length - row.metrics.salaryDeductionDays).toFixed(2).replace(/\.00$/, ''),
         ];
@@ -798,11 +799,9 @@ export default function SalaryCalculationReport({ role }: SalaryCalculationRepor
                       Total Working Days
                     </th>
                   )}
-                  {salaryTab === 'joined_this_month' && (
-                    <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
-                      Late Deduction
-                    </th>
-                  )}
+                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
+                    Late Deduction
+                  </th>
                   {salaryTab === 'regular' && (
                     <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
                       Deductions
@@ -880,15 +879,13 @@ export default function SalaryCalculationReport({ role }: SalaryCalculationRepor
                           {row.metrics.totalWorkingDaysDisplay.toFixed(2).replace(/\.00$/, '')}
                         </td>
                       )}
-                      {salaryTab === 'joined_this_month' && (
-                        <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
-                          {row.metrics.lateDeduction > 0 ? (
-                            <span className="text-rose-600 font-bold">-{row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, '')} d</span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                      )}
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
+                        {row.metrics.lateDeduction > 0 ? (
+                          <span className="text-rose-600 font-bold">-{row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, '')} d</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       {salaryTab === 'regular' && (
                         <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
                           {row.metrics.salaryDeductionDays > 0 ? (
