@@ -753,12 +753,12 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-600 bg-slate-50/20">
                     Total Working Days
                   </th>
-                  <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
+                  {/* <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
                     Late Deduction
                   </th>
                   <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50/20">
                     Deductions
-                  </th>
+                  </th> */}
                   <th
                     onClick={() => handleSort('percentage')}
                     className="px-5 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100/50 transition-colors"
@@ -827,7 +827,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                       <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700 bg-slate-50/5">
                         {row.metrics.totalWorkingDaysDisplay.toFixed(2).replace(/\.00$/, '')}
                       </td>
-                      <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
+                      {/* <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/5">
                         {row.metrics.lateDeduction > 0 ? (
                           <span className="text-rose-600 font-bold">-{row.metrics.lateDeduction.toFixed(2).replace(/\.00$/, '')} d</span>
                         ) : (
@@ -840,7 +840,7 @@ export default function MonthlyReport({ role }: MonthlyReportProps) {
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
-                      </td>
+                      </td> */}
                       <td className="px-5 py-3 text-center">
                         <span className={`inline-flex items-center px-2 py-1 text-xs font-bold rounded-lg ${row.metrics.attendancePercentage >= 90
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'

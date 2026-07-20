@@ -1,0 +1,50 @@
+[
+  {
+    "_id": "6a225ec0e30358b77365a10d",
+    "employeeId": "6a1d1e3271523c75c540fb55",
+    "date": "2026-06-02T00:00:00.000Z",
+    "reason": "Dear sir,\n\nI am been in office with in the timeline provided and even making sure if there is a delay of 1 or 2 minutes I am overcompensating the same at the day end kindly review and change the status",
+    "status": "APPROVED",
+    "resolvedBy": "6a1d1e2e71523c75c540fb33",
+    "resolvedAt": "2026-06-13T09:16:56.040Z",
+    "createdAt": "2026-06-05T05:29:36.873Z",
+    "updatedAt": "2026-06-13T09:16:56.043Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a2f9be09032daeeb541c4fb",
+    "employeeId": "6a1d1e2f71523c75c540fb35",
+    "date": "2026-06-15T00:00:00.000Z",
+    "reason": "Due to heavy rain. Kindly review",
+    "status": "APPROVED",
+    "resolvedBy": "6a1d1e2e71523c75c540fb33",
+    "resolvedAt": "2026-06-15T07:06:05.359Z",
+    "createdAt": "2026-06-15T06:29:52.866Z",
+    "updatedAt": "2026-06-15T07:06:05.360Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3135c29032daeeb5420858",
+    "employeeId": "6a1d1e3271523c75c540fb55",
+    "date": "2026-06-16T00:00:00.000Z",
+    "reason": "Hi Sir, today due to rain I got late in reaching office, request you to please make the changes in my today's record",
+    "status": "APPROVED",
+    "resolvedBy": "6a1d1e2e71523c75c540fb33",
+    "resolvedAt": "2026-07-03T05:33:02.460Z",
+    "createdAt": "2026-06-16T11:38:42.072Z",
+    "updatedAt": "2026-07-03T05:33:02.479Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a4e1fbcb606f55550a7731a",
+    "employeeId": "6a1d1e3271523c75c540fb55",
+    "date": "2026-07-08T00:00:00.000Z",
+    "reason": "Hi Sir,\n\nToday due to rain I got late in reaching office, as it was an unpredicted instance, kindly remove the tag as marked late.",
+    "status": "APPROVED",
+    "resolvedBy": "6a1d1e2e71523c75c540fb33",
+    "resolvedAt": "2026-07-13T07:52:54.097Z",
+    "createdAt": "2026-07-08T10:00:28.104Z",
+    "updatedAt": "2026-07-13T07:52:54.098Z",
+    "__v": 0
+  }
+]

@@ -4,12 +4,12 @@ import * as path from 'path';
 
 // ⚠️ IMPORTANT: Set this to the exact folder name of your backup inside the 'backups' directory
 // Example: '2026-06-05T04-35-12-123Z'
-const BACKUP_FOLDER_NAME: string = '2026-06-05T06-06-39-095Z'; 
+const BACKUP_FOLDER_NAME: string = '2026-07-20T10-16-03-021Z';
 
 async function runRestore() {
   try {
     const backupDir = path.join(process.cwd(), 'backups', BACKUP_FOLDER_NAME);
-    
+
     if (!fs.existsSync(backupDir) || BACKUP_FOLDER_NAME === 'ENTER_YOUR_BACKUP_FOLDER_NAME_HERE') {
       throw new Error(`\n❌ Backup folder not found: ${backupDir}\n👉 Please update the BACKUP_FOLDER_NAME variable at the top of the restore_db.ts script!`);
     }
@@ -35,7 +35,7 @@ async function runRestore() {
 
     // 3. Read all JSON files from the backup directory
     const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.json'));
-    
+
     if (files.length === 0) {
       console.log('No JSON files found in the backup directory.');
       return;
@@ -67,7 +67,7 @@ async function runRestore() {
               // Convert to ObjectId if it's a 24-character hex string and likely an ID
               if (/^[0-9a-fA-F]{24}$/.test(value) && (key === '_id' || key.endsWith('Id') || key === 'overriddenBy')) {
                 newObj[key] = new mongoose.Types.ObjectId(value);
-              } 
+              }
               // Convert to Date if it's an ISO date string
               else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(value)) {
                 newObj[key] = new Date(value);
@@ -95,7 +95,7 @@ async function runRestore() {
       // Insert the backed-up documents
       console.log(` -> Inserting ${processedDocs.length} documents...`);
       await collection.insertMany(processedDocs);
-      
+
       console.log(` -> ✅ Restored ${collectionName} successfully!`);
     }
 

@@ -1,0 +1,14 @@
+[
+  {
+    "_id": "6a225ec0e30358b77365a10d",
+    "employeeId": "6a1d1e3271523c75c540fb55",
+    "date": "2026-06-02T00:00:00.000Z",
+    "reason": "Dear sir,\n\nI am been in office with in the timeline provided and even making sure if there is a delay of 1 or 2 minutes I am overcompensating the same at the day end kindly review and change the status",
+    "status": "PENDING",
+    "resolvedBy": null,
+    "resolvedAt": null,
+    "createdAt": "2026-06-05T05:29:36.873Z",
+    "updatedAt": "2026-06-05T05:29:36.873Z",
+    "__v": 0
+  }
+]
